@@ -123,4 +123,4 @@ class Actor(object):
             i: d for i, d in zip(self.input_actor_params, input_actor_params)
         })
 
-#Compute gradients function
+#TODO: Compute entropy
