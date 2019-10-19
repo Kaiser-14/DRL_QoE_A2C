@@ -62,14 +62,14 @@ class Environment:
             #   background = self.get_traffic_background()
             video = video_bitrates[quality] * 1000  #Convert to bps. TODO: Check random normal
 
-            free_capacity = link_capacity - video - background_traffic
-            if free_capacity < 0: free_capacity = 0.0
-            free_capacity_list.append(free_capacity)
+            #free_capacity = link_capacity - video - background_traffic
+            #if free_capacity < 0: free_capacity = 0.0
+            #free_capacity_list.append(free_capacity)
             #free_capacity_frac_list.append(free_capacity/link_capacity)
 
-            loss_rate = video/video_rx  # TODO: Check it
-            if loss_rate < 0: loss_rate = 0
-            loss_rate_list.append(loss_rate)
+            #loss_rate = video/video_rx  # TODO: Check it
+            #if loss_rate < 0: loss_rate = 0
+            #loss_rate_list.append(loss_rate)
             #loss_rate_frac_list.append(loss_rate/)
 
         #mean_free_capacity = np.mean(free_capacity_list)
