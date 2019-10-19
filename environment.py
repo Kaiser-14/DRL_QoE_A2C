@@ -43,6 +43,8 @@ class Environment:
 
     def get_info(self, video_bitrates, quality, link_capacity):
         #chunk_size = self.video_size[bitrate][self.video_pointer]
+        #To have a report by cmd
+        #FFREPORT=file=ffreport.log:level=32 ffmpeg -i input output
         self.video_pointer += 1
 
         video = 0.0
@@ -132,3 +134,4 @@ def compute_entropy(x):
         if 0 < x[i] < 1:
             H -= x[i] * np.log(x[i])
     return H
+

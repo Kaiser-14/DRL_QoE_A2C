@@ -10,12 +10,13 @@ from keras.layers.merge import Add, Multiply
 from keras.optimizers import Adam
 import keras.backend as K
 import requests
-# import env
-# import a3c
-# import load_trace
 import environment
 import actor
 import critic
+import ffmpeg
+import logging
+import subprocess
+
 
 NUM_AGENTS = 4
 #NUM_AGENTS = multiprocessing.cpu_count()
@@ -50,6 +51,8 @@ CRITIC_LR = 0.001
 SUMMARY_DIR = './results/summary/'
 TRACES_DIR = './traces/'
 LOGS_DIR = './results/logs/'
+in_filename = 'video.mp4'
+out_filename = 'udp://localhost:1234'
 
 # Grafana
 #URL = /api/datasources/proxy/:datasourceId/*  # Check URL
@@ -164,7 +167,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 #     log_test_file)
 
 
-def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
+def agent(agent_id, traces, net_params_queue, exp_queue, process1):  # General agent
     env = environment.Environment(traces=traces)
 
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:#Open another file to easily plot
@@ -194,6 +197,9 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
         time_stamp = 0
 
+        width, height = get_video_size(in_filename)
+        process1 = ffmpeg_process(in_filename)
+
         while True:  #Maybe handle it until precision model reaches some error point
             profile, pMOS, usage_CPU, end_of_video = env.get_info(action) #mean_free_capacity,mean_free_capacity_frac, \
                 #mean_loss_rate, \
@@ -205,6 +211,16 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
             #grafana_data = grafana_request.json()
             #bitrate_rec = grafana_data[1]
             #usage_CPU = grafana_data[2]
+
+            # Start processing
+            in_frame = read_frame(process1, width, height)
+            if in_frame is None:
+                # logger.info('End of input stream')  #TODO: Add logger information
+                break
+
+            # logger.debug('Processing frame')
+            # out_frame = process_frame(in_frame)
+            # write_frame(process2, out_frame)
 
             #Possible pseudo MOS
             bitrate_in = list(PROFILES[action].values())[0]  # Bitrate tx
@@ -275,6 +291,43 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
                 log_file.write('\n')
 
 
+def get_video_size(filename):
+    #logger.info('Getting video size for {!r}'.format(filename))
+    probe = ffmpeg.probe(filename)
+    video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+    width = int(video_info['width'])
+    height = int(video_info['height'])
+    return width, height
+
+def ffmpeg_process(filename):#TODO: Create a process to handle streaming bitrate
+    # logger.info('Starting ffmpeg process1')
+    args = (
+        ffmpeg
+            .input(filename)
+            .output('pipe:', format='rawvideo', pix_fmt='rgb24')
+            .compile()
+    )
+    return subprocess.Popen(args, stdout=subprocess.PIPE)
+
+
+def read_frame(process, width, height):
+    # logger.debug('Reading frame')
+
+    # Note: RGB24 == 3 bytes per pixel.
+    frame_size = width * height * 3  #TODO: Check that format
+    in_bytes = process.stdout.read(frame_size)
+    if len(in_bytes) == 0:
+        frame = None
+    else:
+        assert len(in_bytes) == frame_size
+        frame = (
+            np
+            .frombuffer(in_bytes, np.uint8)
+            .reshape([height, width, 3])
+        )
+    return frame
+
+
 def main():
 
     if (CLEAN>0):
@@ -311,6 +364,9 @@ def main():
     #    cpu_all.append(cpu)
     #    files_all.append(file)
 
+    process1 = ffmpeg_process(in_filename)
+    # process2 = ffmpeg_process2(out_filename, width, height)
+
     # inter-process communication queues
     net_params_queues = []
     exp_queues = []
@@ -321,14 +377,14 @@ def main():
     # Create a coordinator and multiple agent processes
     # (note: threading is not desirable due to python GIL)
     coordinator = mp.Process(target=sup_agent,
-                             args=(net_params_queues, exp_queues))#Improve it
+                             args=(net_params_queues, exp_queues))  #TODO: Improve it
     coordinator.start()
 
     agents = []
     for id in range(NUM_AGENTS):
         agents.append(mp.Process(target=agent,
                                   args=(id, net_params_queues[i],
-                                  exp_queues[i])))#TODO: Improve it
+                                  exp_queues[i], process1)))  #TODO: Improve it
     for id in range(NUM_AGENTS):
         agents[id].start()
 
