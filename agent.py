@@ -51,12 +51,20 @@ CRITIC_LR = 0.001
 SUMMARY_DIR = './results/summary/'
 TRACES_DIR = './traces/'
 LOGS_DIR = './results/logs/'
-in_filename = 'video.mp4'
-out_filename = 'udp://localhost:1234'
+
 
 # Grafana
 #URL = /api/datasources/proxy/:datasourceId/*  # Check URL
 #PARAMS = {'address':"address"}
+
+# ffmpeg parameters
+input_ffmpeg = 'video.mp4'
+output_ffmpeg = 'udp://localhost:1234'
+fifo_size = '1000000000'
+ac = '2'
+scale = '1920:1080'
+aresample = '48000'
+crf = '28'
 
 # Other parameters
 RAND_ACTION = 1000#Tune it
@@ -167,7 +175,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 #     log_test_file)
 
 
-def agent(agent_id, traces, net_params_queue, exp_queue, process1):  # General agent
+def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
     env = environment.Environment(traces=traces)
 
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:#Open another file to easily plot
@@ -222,9 +230,19 @@ def agent(agent_id, traces, net_params_queue, exp_queue, process1):  # General a
             # out_frame = process_frame(in_frame)
             # write_frame(process2, out_frame)
 
+            # Read log file to extract ffmpeg console output (streaming)
+            #TODO: Think to  clear the report file after read it. Maybe not possible
+            with open('report.txt', 'r') as f:
+                lines = f.readlines()
+                lines = [x.strip('\n') for x in lines]  #Remove blankspaces
+
+                parameters = lines[-3].split()  # Separate the output parameters
+                bitrate_in = float(parameters[7][:-7])  # Bitrate rx FIXME: ffmpeg does not produce continuos output/frame
+                f.close()
+
             #Possible pseudo MOS
-            bitrate_in = list(PROFILES[action].values())[0]  # Bitrate tx
-            bitrate_out = list(PROFILES[profile].values())[0]  # Bitrate rx
+            bitrate_out = list(PROFILES[action].values())[0]  # Bitrate tx
+            #bitrate_out = list(PROFILES[profile].values())[0]
             #pseudoMOS = bitrate_rec / (TI/SI)  # Need to include a call to some MOS database
             reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
             rewards_matrix.append(reward)
@@ -299,7 +317,7 @@ def get_video_size(filename):
     height = int(video_info['height'])
     return width, height
 
-def ffmpeg_process(filename):#TODO: Create a process to handle streaming bitrate
+def ffmpeg_process(filename):#TODO: Write output to report file
     # logger.info('Starting ffmpeg process1')
     args = (
         ffmpeg
@@ -364,8 +382,20 @@ def main():
     #    cpu_all.append(cpu)
     #    files_all.append(file)
 
-    process1 = ffmpeg_process(in_filename)
-    # process2 = ffmpeg_process2(out_filename, width, height)
+    #process = ffmpeg_process(in_filename)
+    command = 'ffmpeg -i ' + input_ffmpeg + ' -fifo_size ' + fifo_size + ' -ac ' + ac + ' -filter_complex "[0:v] scale='+ scale + ',fps=25 [v] ; [0:a] aresample='+aresample+' [a]" -map "[v]" -map "[a]" -c:v libx264 -crf '+ crf + ' -c:a pcm_s16le -f mpegts ' + output_ffmpeg
+
+    os.system(command)
+
+    # ffmpeg -i myinput.avi {a-bunch-of-important-params} out.flv 2> /path/to/out.txt
+    # ffmpeg … 2>&1 > /var/log/ffmpeg.log
+    # grep "fps=…" /var/log/ffmpeg.log
+    #To execute two subprocess at the same time
+    #processes = [subprocess.Popen(program) for program in ['a', 'b']]
+    # wait
+    #for process in processes:
+    #    process.wait()
+
 
     # inter-process communication queues
     net_params_queues = []
@@ -384,7 +414,7 @@ def main():
     for id in range(NUM_AGENTS):
         agents.append(mp.Process(target=agent,
                                   args=(id, net_params_queues[i],
-                                  exp_queues[i], process1)))  #TODO: Improve it
+                                  exp_queues[i], process)))  #TODO: Improve it
     for id in range(NUM_AGENTS):
         agents[id].start()
 
