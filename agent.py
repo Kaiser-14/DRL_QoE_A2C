@@ -1,47 +1,37 @@
-import os
-import logging
-import numpy as np
-import multiprocessing as mp
-os.environ['CUDA_VISIBLE_DEVICES']=''
-import tensorflow as tf
-from keras.models import Sequential, Model
-from keras.layers import Dense, Dropout, Input
-from keras.layers.merge import Add, Multiply
-from keras.optimizers import Adam
-import keras.backend as K
-import requests
 import environment
 import actor
 import critic
-import ffmpeg
+
+import os
 import logging
-import subprocess
+import time
+import numpy as np
+import multiprocessing as mp
+import tensorflow as tf
+
+import logging
+
+# TODO: Check CUDA
+# os.environ['CUDA_VISIBLE_DEVICES']=''
 
 
 NUM_AGENTS = 4
-#NUM_AGENTS = multiprocessing.cpu_count()
+# NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
 random_seed = 42
 
-NUM_STATES = 3 #Number of possible states, e.g., bitrate
-LEN_STATES = 8 #Number of frames in the past
-TRAINING_REPORT = 100 #Batch to write information into the logs. Tune it
+# TODO: Tune parameters
+NUM_STATES = 3  # Number of possible states, e.g., bitrate
+LEN_STATES = 8  # Number of frames in the past
+TRAINING_REPORT = 100  # Batch to write information into the logs
 
-# Modify the bitrates based on purpose. The number of actions must correspond to the number of possible bitrates
-#VIDEO_BITRATE = [3, 5, 10, 15, 20, 50]  # Mbps. Consider in providing it in kbps
-#ACTIONS = [3, 5, 10, 15, 20, 50, 0, 1]  # Rate in Mbps and the last two ones, change to 720p or 1080p (resolution).
+# Different profiles combining resolutions and bitrates
 PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
 
 DEFAULT_ACTION = 4  #PROFILES[0][1] 1080p 15Mbps
-#DEFAULT_RES = list(PROFILES[4].keys())[0]
-#DEFAULT_BITRATE = list(PROFILES[4].values())[0]
+# DEFAULT_RES = list(PROFILES[4].keys())[0]
+# DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
-#MAX_BITRATE = 50
-#CRF = [1, 50]  # Constant Rate Factor. Lower values results in better quality. Higher means more compression.
-# Range values for x264 are between 18 and 28 (Default is 23, but 18 is also good). For x265, the default CRF is 28
-# (24 could be good)
-# https://slhck.info/video/2017/02/24/crf-guide.html
-#DEFAULT_RESOLUTION = 1  # 1080p (0 for 720p)
 
 # Learning rates
 ACTOR_LR = 0.0001
@@ -53,38 +43,32 @@ TRACES_DIR = './traces/'
 LOGS_DIR = './results/logs/'
 
 
-# Grafana
-#URL = /api/datasources/proxy/:datasourceId/*  # Check URL
-#PARAMS = {'address':"address"}
-
-# ffmpeg parameters
-input_ffmpeg = 'video.mp4'
-output_ffmpeg = 'udp://localhost:1234'
-fifo_size = '1000000000'
-ac = '2'
-scale = '1920:1080'
-aresample = '48000'
-crf = '28'
+# Kafka parameters
+# KAFKA_URL = /api/datasources/proxy/:datasourceId/*  # Check URL
+# KAFKA_PORT = {'address':"address"}
 
 # Other parameters
-RAND_ACTION = 1000#Tune it
-alpha = 0.8#Tune it
-beta = 0.8#Tune it
-gamma = 0.8#Tune it
+# TODO: Tune parameters
+RAND_ACTION = 1000  # Random value to decide exploratory action
+alpha = 0.8  # Reward tuning: pMOS
+beta = 0.8  # Reward tuning: Usage CPU
+gamma = 0.8  # Reward tuning: Bitrate
 
 # Neural Network Model
+# TODO: Clean these lines
 # NN_MODEL = './results/pretrain_linear_reward.ckpt'
-#NN_MODEL = LOGS_DIR + 'pretrain_linear_reward.ckpt'
-#NN_MODEL = latest = tf.train.latest_checkpoint(checkpoint_dir) #Use the previous trained model
-#https://www.tensorflow.org/tutorials/keras/save_and_restore_models
+# NN_MODEL = LOGS_DIR + 'pretrain_linear_reward.ckpt'
+# NN_MODEL = latest = tf.train.latest_checkpoint(checkpoint_dir) #Use the previous trained model
+# https://www.tensorflow.org/tutorials/keras/save_and_restore_models
 NN_MODEL = None
 
 # Predefined parameters
 CLEAN = 0  # Change to 1 to delete the results folder and start a fresh modelling
 
+
 def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
-    #Make some checks
-    logging.basicConfig(filename=LOGS_DIR + 'log_supervisor', filemode='w', level=logging.INFO)#Check binary way
+    # FIXME: Need it?
+    logging.basicConfig(filename=LOGS_DIR + 'log_supervisor', filemode='w', level=logging.INFO)
 
     with tf.Session() as sess, open(LOGS_DIR + '_test', 'w') as log_test_file:
         log_test_file.flush()  # Only to silent the python-check
@@ -110,7 +94,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
             critic_params = critic_net.get_critic_params()
 
             for i in range(NUM_AGENTS):
-                net_params_queues[i].put([actor_params, critic_params])#TODO: Do not forget to check asynchronous way
+                net_params_queues[i].put([actor_params, critic_params])  # TODO: Do not forget to check asynchronous way
 
             total_len = 0.0
             reward_sum = 0.0
@@ -141,10 +125,11 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 agents_sum += 1.0
 
             # compute aggregated gradient
-            assert NUM_AGENTS == len(actor_gradient_matrix)#Check it
+            # TODO: Check it
+            assert NUM_AGENTS == len(actor_gradient_matrix)
             assert len(actor_gradient_matrix) == len(critic_gradient_matrix)
 
-            #check
+            # TODO: Check it
             for i in range(len(actor_gradient_matrix)):
                 actor_net.apply_gradients(actor_gradient_matrix[i])
                 critic_net.apply_gradients(critic_gradient_matrix[i])
@@ -176,23 +161,25 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
 
 
 def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
-    env = environment.Environment(traces=traces)
+    # FIXME: Remove it?
+    # env = environment.Environment()
 
-    with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:#Open another file to easily plot
-        actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION, learning_rate=ACTOR_LR)
-        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES], learning_rate=CRITIC_LR)
+    # TODO: Check possibility to open another file to see current environment working
+    with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
+        actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
+                                learning_rate=ACTOR_LR)
+        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
+                                   learning_rate=CRITIC_LR)
 
-        # initial synchronization of the network parameters from the coordinator
+        # Initial synchronization of the network parameters from the coordinator
         actor_net_params, critic_net_params = net_params_queue.get()
         actor_net.set_actor_params(actor_net_params)
         critic_net.set_critic_params(critic_net_params)
 
+        # TODO: Check where to include last_action parameter
         # Initialize some parameters
-        #action_previous = np.random.randint(1, NUM_ACTION-2)  # Randomize between only bitrates
-        #action = action_previous
         last_action = DEFAULT_ACTION
-        action = DEFAULT_ACTION
-        #Here, calculate current bitrate based on crf, using max_bitrate and current resolution (default 1080p)
+        action = last_action
 
         # Vectors for storing values: states, actions, rewards.
         actions = np.zeros(NUM_ACTION)
@@ -205,46 +192,20 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
         time_stamp = 0
 
-        width, height = get_video_size(in_filename)
-        process1 = ffmpeg_process(in_filename)
+        while True:
 
-        while True:  #Maybe handle it until precision model reaches some error point
-            profile, pMOS, usage_CPU, end_of_video = env.get_info(action) #mean_free_capacity,mean_free_capacity_frac, \
-                #mean_loss_rate, \
-                #mean_loss_rate_frac, \
-                #end_of_video
+            # TODO: Think to better handle action variable
 
-            #bitrate_out = bitrate  # Adjust it based on the actions array
-            #grafana_request = requests.get(url=URL, params=PARAMS)
-            #grafana_data = grafana_request.json()
-            #bitrate_rec = grafana_data[1]
-            #usage_CPU = grafana_data[2]
+            # TODO: Kafka calls
+            # Kafka Server
 
-            # Start processing
-            in_frame = read_frame(process1, width, height)
-            if in_frame is None:
-                # logger.info('End of input stream')  #TODO: Add logger information
-                break
+            profile = action
+            bitrate_in = list(PROFILES[action].values())[0]  # Received from Kafka
+            bitrate_out = list(PROFILES[profile].values())[0]  # Predicted bitrate
 
-            # logger.debug('Processing frame')
-            # out_frame = process_frame(in_frame)
-            # write_frame(process2, out_frame)
-
-            # Read log file to extract ffmpeg console output (streaming)
-            #TODO: Think to  clear the report file after read it. Maybe not possible
-            with open('report.txt', 'r') as f:
-                lines = f.readlines()
-                lines = [x.strip('\n') for x in lines]  #Remove blankspaces
-
-                parameters = lines[-3].split()  # Separate the output parameters
-                bitrate_in = float(parameters[7][:-7])  # Bitrate rx FIXME: ffmpeg does not produce continuos output/frame
-                f.close()
-
-            #Possible pseudo MOS
-            bitrate_out = list(PROFILES[action].values())[0]  # Bitrate tx
-            #bitrate_out = list(PROFILES[profile].values())[0]
-            #pseudoMOS = bitrate_rec / (TI/SI)  # Need to include a call to some MOS database
-            reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
+            # TODO: create correctly reward function after Kafka
+            # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
+            reward = 0
             rewards_matrix.append(reward)
 
             last_action = action
@@ -274,16 +235,24 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
             # print('\nAction cumsum: ', action_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
 
+            # TODO: Report action (resolution and bitrate) to vCE
+            # REST/api:.../bitrate/+bitrate
+            # REST/api:.../bitrate/+resolution
+
+            # FIXME: Add here wait() and last_action
+            last_action = action
+            time.sleep(5)
+
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
-            # Add more information to the logs
+            # TODO: Add more information to the logs
             log_file.write(str(time_stamp) + '\t' +
                            str(reward) # + '\t' # +
                            # str(video_bitrates[bit_rate]) + '\t' + #Check how to decide
                            # str(mean_free_capacity) + '\t' +
                            # str(mean_loss_rate * 8.0 / M_IN_K) + '\t' +
                            # str(video_count) + '\n'
-                                          )
+                            )
 
             log_file.flush()
 
@@ -291,9 +260,8 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
             if len(rewards_matrix) >= TRAINING_REPORT:
                 exp_queue.put([states_matrix[1:],
                                actions_matrix[1:],
-                               rewards_matrix[1:]
-                               #end_of_video,
-                               #{'entropy': entropy_matrix}
+                               rewards_matrix[1:],
+                               {'entropy': entropy_matrix}
                               ])
 
                 # Sync information
@@ -306,53 +274,13 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
                 del rewards_matrix[:]
                 del entropy_matrix[:]
 
-                log_file.write('\n')
-
-
-def get_video_size(filename):
-    #logger.info('Getting video size for {!r}'.format(filename))
-    probe = ffmpeg.probe(filename)
-    video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
-    width = int(video_info['width'])
-    height = int(video_info['height'])
-    return width, height
-
-def ffmpeg_process(filename):#TODO: Write output to report file
-    # logger.info('Starting ffmpeg process1')
-    args = (
-        ffmpeg
-            .input(filename)
-            .output('pipe:', format='rawvideo', pix_fmt='rgb24')
-            .compile()
-    )
-    return subprocess.Popen(args, stdout=subprocess.PIPE)
-
-
-def read_frame(process, width, height):
-    # logger.debug('Reading frame')
-
-    # Note: RGB24 == 3 bytes per pixel.
-    frame_size = width * height * 3  #TODO: Check that format
-    in_bytes = process.stdout.read(frame_size)
-    if len(in_bytes) == 0:
-        frame = None
-    else:
-        assert len(in_bytes) == frame_size
-        frame = (
-            np
-            .frombuffer(in_bytes, np.uint8)
-            .reshape([height, width, 3])
-        )
-    return frame
+                # log_file.write('\n')
 
 
 def main():
 
-    if (CLEAN>0):
+    if CLEAN > 0:
         os.system("rm ./results/*")
-
-    # TODO: Background traffic from iperf
-    #random_traffic
 
     np.random.seed(random_seed)
 
@@ -360,44 +288,7 @@ def main():
     if not os.path.exists(SUMMARY_DIR):
         os.makedirs(SUMMARY_DIR)
 
-    # Load traces into the program
-    #traces_files = os.listdir(TRACES_DIR)
-    #Maybe traces are extracted also from Grafana
-    # New traces consist on:
-    #time_all, bw_all, crf_all, rescaling_all, cpu_all, files_all = [], [], [], [], [], []
-    #for file in traces_files:
-    #    traces_path = TRACES_DIR + file
-    #    time, bw, crf, rescaling, cpu = [], [], [], [], []
-    #    with open(traces_path, 'r') as t:
-    #        for line in t:
-    #            time.append(float(line.split()[0]))
-    #            bw.append(float(line.split()[1]))
-    #            crf.append(float(line.split()[2]))
-    #            rescaling.append(float(line.split()[3]))
-    #            cpu.append(float(line.split()[4]))
-    #    time_all.append(time)
-    #    bw_all.append(bw)
-    #    crf_all.append(crf)
-    #    rescaling_all.append(rescaling)
-    #    cpu_all.append(cpu)
-    #    files_all.append(file)
-
-    #process = ffmpeg_process(in_filename)
-    command = 'ffmpeg -i ' + input_ffmpeg + ' -fifo_size ' + fifo_size + ' -ac ' + ac + ' -filter_complex "[0:v] scale='+ scale + ',fps=25 [v] ; [0:a] aresample='+aresample+' [a]" -map "[v]" -map "[a]" -c:v libx264 -crf '+ crf + ' -c:a pcm_s16le -f mpegts ' + output_ffmpeg
-
-    os.system(command)
-
-    # ffmpeg -i myinput.avi {a-bunch-of-important-params} out.flv 2> /path/to/out.txt
-    # ffmpeg … 2>&1 > /var/log/ffmpeg.log
-    # grep "fps=…" /var/log/ffmpeg.log
-    #To execute two subprocess at the same time
-    #processes = [subprocess.Popen(program) for program in ['a', 'b']]
-    # wait
-    #for process in processes:
-    #    process.wait()
-
-
-    # inter-process communication queues
+    # Inter-process communication queues
     net_params_queues = []
     exp_queues = []
     for i in range(NUM_AGENTS):
@@ -406,17 +297,14 @@ def main():
 
     # Create a coordinator and multiple agent processes
     # (note: threading is not desirable due to python GIL)
-    coordinator = mp.Process(target=sup_agent,
-                             args=(net_params_queues, exp_queues))  #TODO: Improve it
+    coordinator = mp.Process(target=sup_agent, args=(net_params_queues, exp_queues))  # TODO: Improve it
     coordinator.start()
 
     agents = []
-    for id in range(NUM_AGENTS):
-        agents.append(mp.Process(target=agent,
-                                  args=(id, net_params_queues[i],
-                                  exp_queues[i], process)))  #TODO: Improve it
-    for id in range(NUM_AGENTS):
-        agents[id].start()
+    for id_agent in range(NUM_AGENTS):
+        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[i])))
+    for id_agent in range(NUM_AGENTS):
+        agents[id_agent].start()
 
     # Training done
     coordinator.join()

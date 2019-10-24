@@ -1,16 +1,8 @@
-#Video sizes from folders are given in bytes
-#import os
-#video_chunk_path = './video6/1.m4s'
-#chunk_size = os.path.getsize(video_chunk_path)
-#print(chunk_size)
-
 import tflearn
 import tensorflow as tf
 from keras.models import Sequential, Model
 from keras.layers import Dense, Dropout, Input
-from keras.layers.merge import Add, Multiply
 from keras.optimizers import Adam
-import keras.backend as K
 
 
 class Actor(object):
@@ -21,9 +13,6 @@ class Actor(object):
         self.learning_rate = learning_rate
 
         # Creating the full actor network
-        # Keras
-        #self.input, self.output, self.model = self.create_actor()
-        # TF
         self.input, self.output = self.create_actor_tf()
 
         # Get all network parameters
@@ -31,7 +20,6 @@ class Actor(object):
             tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='actor')
 
         # Set all network parameters
-        #Check another workaround
         self.input_actor_params = []
         for param in self.actor_params:
             self.input_actor_params.append(
@@ -43,13 +31,13 @@ class Actor(object):
         self.actor_critic_grad = tf.placeholder(tf.float32,
                                                 [None, self.actions_dim.shape[
                                                     0]])  # where we will feed de/dC (from critic)
-        #Check if it is provided or not. Another possibility is changing actor weigths for actor_params. Also in optimize
+        # TODO: Check correct weigths assigning
         # This gradient will be provided by the critic network
         self.actor_weights = tf.placeholder(tf.float32, [None, 1])
         self.actor_grads = tf.gradients(self.output,
                                         self.actor_weights, -self.actor_critic_grad)  # dC/dA (from actor)
 
-        #Search for maybe another optimizer
+        # FIXME: Search another optimizer and compare
         self.optimize = tf.train.RMSPropOptimizer(self.learning_rate).apply_gradients(zip(self.actor_grads,
                                                                                        self.actor_params))
 
@@ -122,5 +110,3 @@ class Actor(object):
         self.sess.run(self.set_actor_params_op, feed_dict={
             i: d for i, d in zip(self.input_actor_params, input_actor_params)
         })
-
-#TODO: Compute entropy

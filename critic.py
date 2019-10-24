@@ -1,17 +1,16 @@
 import tflearn
 import tensorflow as tf
-
 from keras.models import Sequential, Model
 from keras.layers import Dense, Dropout, Input
 from keras.layers.merge import Add, Multiply
 from keras.optimizers import Adam
-import keras.backend as K
 
 
 class Critic(object):
-    def __init__(self, sess, states_dim, learning_rate):
+    def __init__(self, sess, states_dim, actions_dim, learning_rate):
         self.sess = sess
         self.states_dim = states_dim
+        self.actions_dim = actions_dim
         self.learning_rate = learning_rate
 
         # Creating the full critic network
@@ -50,7 +49,7 @@ class Critic(object):
         state_h1 = Dense(24, activation='relu')(state_input)
         state_h2 = Dense(48)(state_h1)
 
-        action_input = Input(shape=NUM_ACTION)
+        action_input = Input(shape=self.actions_dim)
         action_h1 = Dense(48)(action_input)
 
         merged = Add()([state_h2, action_h1])
@@ -71,7 +70,7 @@ class Critic(object):
             split_1 = tflearn.fully_connected(input_critic[:, 1:2, -1], 128, activation='relu')
             split_2 = tflearn.conv_1d(input_critic[:, 2:3, :], 128, 4, activation='relu')
             split_3 = tflearn.conv_1d(input_critic[:, 3:4, :], 128, 4, activation='relu')
-            split_4 = tflearn.conv_1d(input_critic[:, 4:5, :NUM_ACTION], 128, 4, activation='relu')
+            split_4 = tflearn.conv_1d(input_critic[:, 4:5, :self.actions_dim], 128, 4, activation='relu')
             split_5 = tflearn.fully_connected(input_critic[:, 4:5, -1], 128, activation='relu')
 
             split_2_flat = tflearn.flatten(split_2)
@@ -120,4 +119,3 @@ class Critic(object):
         self.sess.run(self.set_critic_params_op, feed_dict={
             i: d for i, d in zip(self.input_critic_params, input_critic_params)
         })
-#Compute gradients function
