@@ -9,8 +9,6 @@ import numpy as np
 import multiprocessing as mp
 import tensorflow as tf
 
-import logging
-
 # TODO: Check CUDA
 # os.environ['CUDA_VISIBLE_DEVICES']=''
 # from tensorflow.python.client import device_lib
@@ -30,7 +28,8 @@ TRAINING_REPORT = 100  # Batch to write information into the logs
 PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
 
-DEFAULT_ACTION = 4  #PROFILES[0][1] 1080p 15Mbps
+DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
+MAX_BITRATE = max(list(x.keys())[0] for x in list(PROFILES.values()))
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -41,7 +40,6 @@ CRITIC_LR = 0.001
 
 # Files
 SUMMARY_DIR = './results/summary/'
-#TRACES_DIR = './traces/'
 LOGS_DIR = './results/logs/'
 MODEL_DIR = './results/model/'
 
@@ -75,7 +73,8 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
         log_test_file.flush()  # Only to silent the python-check
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
-        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES], learning_rate=CRITIC_LR)
+        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES],  actions_dim=NUM_ACTION,
+                                   learning_rate=CRITIC_LR)
 
         model_vars, model_ops = environment.model_summary()
 
@@ -159,11 +158,8 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 #     log_test_file)
 
 
-def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
-    # FIXME: Remove it?
-    # env = environment.Environment()
+def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
-    # TODO: Check possibility to open another file to see current environment working
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
@@ -175,9 +171,7 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
         actor_net.set_actor_params(actor_net_params)
         critic_net.set_critic_params(critic_net_params)
 
-        # TODO: Check where to include last_action parameter
-        # Initialize some parameters
-        #last_action = DEFAULT_ACTION
+        # Initialize action
         action = DEFAULT_ACTION
 
         # Vectors for storing values: states, actions, rewards.
@@ -193,21 +187,21 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
         while True:
 
-            # TODO: Think to better handle action variable
+            # TODO: Streaming calls
+            # Server
+            # free_capacity = API_CALL()
 
-            # TODO: Kafka calls
-            # Kafka Server
+            bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
+            bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
 
-            profile = action
-            bitrate_in = list(PROFILES[action].values())[0]  # Received from Kafka
-            bitrate_out = list(PROFILES[profile].values())[0]  # Predicted bitrate
+            resolution_out = list(PROFILES[1].keys())[0]  # Resolution
 
             # TODO: create correctly reward function after Kafka
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
             reward = 0
             rewards_matrix.append(reward)
 
-            last_action = action
+            # last_action = action
 
             if len(states_matrix) == 0:
                 curr_state = [np.zeros((NUM_STATES, LEN_STATES))]
@@ -216,18 +210,11 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
-            curr_state[0, -1] = PROFILES[bitrate_out]  # Bitrate
-            1: {1080: 50}
-            curr_state[1, -1] = 2  # Rescaling? Yes or nope
-            curr_state[2, -1] = 3  # Usage of CPU above %
-            curr_state[3, -1] = 3  # Maybe CRF to discover the next bitrate
-            curr_state[4, -1] = 3  # Current bitrate of traffic manager or percentage of tunnel occupation
-            curr_state[5, -1] = 3  # Current output bitrate
-
-            #TODO: Control states
-            # curr_state[0, -1] = video_bitrates[bitrate_rec]  #Latest profile
-            # curr_state[1, -1] = float(mean_free_capacity_frac)  #Free capacity of the link
-            # curr_state[2, -1] = float(mean_loss_rate_frac)  #Check frac
+            # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number)
+            curr_state[0, -1] = bitrate_in / MAX_BITRATE  # Bitrate
+            curr_state[1, -1] = bitrate_out / MAX_BITRATE  # Bitrate
+            curr_state[2, -1] = resolution_out / MAX_BITRATE  # Resolution  # TODO: Should we give a fraction?
+            # curr_state[3, -1] = free_capacity
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', action_predicted)
@@ -240,35 +227,28 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
             # REST/api:.../bitrate/+bitrate
             # REST/api:.../bitrate/+resolution
 
-            # FIXME: Add here wait() and last_action
-            last_action = action
+            # FIXME: Adapt timer to the behaviour of the system
             time.sleep(5)
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
             # TODO: Add more information to the logs
             log_file.write(str(time_stamp) + '\t' +
-                           str(reward) # + '\t' # +
-                           # str(video_bitrates[bit_rate]) + '\t' + #Check how to decide
-                           # str(mean_free_capacity) + '\t' +
-                           # str(mean_loss_rate * 8.0 / M_IN_K) + '\t' +
-                           # str(video_count) + '\n'
-                            )
+                           str(reward) + '\t' +
+                           str(bitrate_in) + '\t' +
+                           str(bitrate_out) + '\n'
+                           )
 
             log_file.flush()
 
             # Report experience to the coordinator
             if len(rewards_matrix) >= TRAINING_REPORT:
-                exp_queue.put([states_matrix[1:],
-                               actions_matrix[1:],
-                               rewards_matrix[1:],
-                               {'entropy': entropy_matrix}
-                              ])
+                exp_queue.put([states_matrix[1:], actions_matrix[1:], rewards_matrix[1:], {'entropy': entropy_matrix}])
 
                 # Sync information
                 actor_net_params, critic_net_params = net_params_queue.get()
-                actor_net.set_network_params(actor_net_params)
-                critic_net.set_network_params(critic_net_params)
+                actor_net.set_actor_params(actor_net_params)
+                critic_net.set_critic_params(critic_net_params)
 
                 del states_matrix[:]
                 del actions_matrix[:]
@@ -306,12 +286,12 @@ def main():
 
     # Create a coordinator and multiple agent processes
     # (note: threading is not desirable due to python GIL)
-    coordinator = mp.Process(target=sup_agent, args=(net_params_queues, exp_queues))  # TODO: Improve it
+    coordinator = mp.Process(target=sup_agent, args=(net_params_queues, exp_queues))
     coordinator.start()
 
     agents = []
     for id_agent in range(NUM_AGENTS):
-        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[i])))
+        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent])))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 

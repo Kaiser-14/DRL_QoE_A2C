@@ -1,8 +1,11 @@
 import tflearn
 import tensorflow as tf
-from keras.models import Sequential, Model
-from keras.layers import Dense, Dropout, Input
+from keras.models import Model
+from keras.layers import Dense, Input
 from keras.optimizers import Adam
+
+ENTROPY_WEIGHT = 0.5
+ENTROPY_EPS = 1e-6
 
 
 class Actor(object):
@@ -28,20 +31,25 @@ class Actor(object):
         for idx, param in enumerate(self.input_actor_params):
             self.set_actor_params_op.append(self.actor_params[idx].assign(param))
 
-        self.actor_critic_grad = tf.placeholder(tf.float32,
-                                                [None, self.actions_dim.shape[
-                                                    0]])  # where we will feed de/dC (from critic)
-        # TODO: Check correct weights assigning
+        self.actions = tf.placeholder(tf.float32, [None, self.actions_dim])
+
         # This gradient will be provided by the critic network
         self.actor_weights = tf.placeholder(tf.float32, [None, 1])
-        self.actor_grads = tf.gradients(self.output,
-                                        self.actor_weights, -self.actor_critic_grad)  # dC/dA (from actor)
 
-        # FIXME: Search another optimizer and compare
+        # Compute the objective (log action_vector and entropy)
+        self.objective = tf.reduce_sum(tf.multiply(tf.log(tf.reduce_sum(
+            tf.multiply(self.output, self.actions),
+            reduction_indices=1, keep_dims=True)),
+            -self.actor_weights)) + ENTROPY_WEIGHT * tf.reduce_sum(tf.multiply(self.output,
+                                                                               tf.log(self.output + ENTROPY_EPS)))
+
+        self.actor_grads = tf.gradients(self.objective, self.actor_params)
+
+        # FIXME: Test other optimizer
         self.optimize = tf.train.RMSPropOptimizer(self.learning_rate).apply_gradients(zip(self.actor_grads,
-                                                                                       self.actor_params))
+                                                                                          self.actor_params))
 
-    #Using Keras
+    # Using Keras
     def create_actor(self):
         input_actor = Input(shape=[None, self.states_dim[0], self.states_dim[1]])
         h1 = Dense(24, activation='relu')(input)
@@ -77,30 +85,28 @@ class Actor(object):
 
             return input_actor, output_actor
 
-    def train(self, inputs, acts, act_grad_weights):
-        self.sess.run(self.optimize, feed_dict={
-            self.inputs: inputs,
-            self.acts: acts,
-            self.act_grad_weights: act_grad_weights
-        })
+    def train(self, input, actions, actor_weights):
+        self.sess.run(self.optimize, feed_dict={self.input: input,
+                                                self.actions: actions,
+                                                self.actor_weights: actor_weights
+                                                })
 
-    def predict(self, inputs):
+    def predict(self, input):
         return self.sess.run(self.output, feed_dict={
-            self.inputs: inputs
+            self.input: input
         })
 
     # Could be set in code
-    def get_gradients(self, inputs, acts, act_grad_weights):
+    def get_gradients(self, input, actions, actor_weights):
         return self.sess.run(self.actor_grads, feed_dict={
-            self.inputs: inputs,
-            self.acts: acts,
-            self.act_grad_weights: act_grad_weights
-        })
+                                                          self.input: input,
+                                                          self.actions: actions,
+                                                          self.actor_weights: actor_weights
+                                                          })
 
-    # Could be set in code
-    def apply_gradients(self, actor_gradients):
+    def apply_gradients(self, actor_grads):
         return self.sess.run(self.optimize, feed_dict={
-            i: d for i, d in zip(self.actor_gradients, actor_gradients)
+            i: d for i, d in zip(self.actor_grads, actor_grads)
         })
 
     def get_actor_params(self):

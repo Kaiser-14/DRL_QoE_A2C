@@ -6,11 +6,9 @@ GAMMA = 0.99
 
 
 class Environment:
-    def __init__(self, traces):
+    def __init__(self):
 
-        # TODO: Think of removing class
         np.random.seed(RANDOM_SEED)
-        self.video_pointer = 0
 
 
 def model_summary():
