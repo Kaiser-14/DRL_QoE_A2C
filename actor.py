@@ -31,7 +31,7 @@ class Actor(object):
         self.actor_critic_grad = tf.placeholder(tf.float32,
                                                 [None, self.actions_dim.shape[
                                                     0]])  # where we will feed de/dC (from critic)
-        # TODO: Check correct weigths assigning
+        # TODO: Check correct weights assigning
         # This gradient will be provided by the critic network
         self.actor_weights = tf.placeholder(tf.float32, [None, 1])
         self.actor_grads = tf.gradients(self.output,

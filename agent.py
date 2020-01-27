@@ -13,6 +13,8 @@ import logging
 
 # TODO: Check CUDA
 # os.environ['CUDA_VISIBLE_DEVICES']=''
+# from tensorflow.python.client import device_lib
+# print(device_lib.list_local_devices())
 
 
 NUM_AGENTS = 4
@@ -24,7 +26,7 @@ NUM_STATES = 3  # Number of possible states, e.g., bitrate
 LEN_STATES = 8  # Number of frames in the past
 TRAINING_REPORT = 100  # Batch to write information into the logs
 
-# Different profiles combining resolutions and bitrates
+# Different profiles combining resolutions and bitrate
 PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
 
@@ -39,8 +41,9 @@ CRITIC_LR = 0.001
 
 # Files
 SUMMARY_DIR = './results/summary/'
-TRACES_DIR = './traces/'
+#TRACES_DIR = './traces/'
 LOGS_DIR = './results/logs/'
+MODEL_DIR = './results/model/'
 
 
 # Kafka parameters
@@ -54,22 +57,20 @@ alpha = 0.8  # Reward tuning: pMOS
 beta = 0.8  # Reward tuning: Usage CPU
 gamma = 0.8  # Reward tuning: Bitrate
 
-# Neural Network Model
-# TODO: Clean these lines
-# NN_MODEL = './results/pretrain_linear_reward.ckpt'
-# NN_MODEL = LOGS_DIR + 'pretrain_linear_reward.ckpt'
-# NN_MODEL = latest = tf.train.latest_checkpoint(checkpoint_dir) #Use the previous trained model
-# https://www.tensorflow.org/tutorials/keras/save_and_restore_models
-NN_MODEL = None
-
 # Predefined parameters
 CLEAN = 0  # Change to 1 to delete the results folder and start a fresh modelling
+# TODO: Check correct restoring of pretrained model
+A2C_MODEL = None  # Start a fresh model
+# A2C_MODEL = tf.train.latest_checkpoint(MODEL_DIR)  # Load latest trained model
 
 
 def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
     # FIXME: Need it?
     logging.basicConfig(filename=LOGS_DIR + 'log_supervisor', filemode='w', level=logging.INFO)
 
+    # FIXME: Insert the code to check GPU device working.
+    # with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess, open(LOGS_DIR + '_test', 'w')
+    # as log_test_file:
     with tf.Session() as sess, open(LOGS_DIR + '_test', 'w') as log_test_file:
         log_test_file.flush()  # Only to silent the python-check
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
@@ -83,7 +84,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
         saver = tf.train.Saver()  # Save neural net parameters
 
         # Restore previously NN trained (set in global parameters)
-        model = NN_MODEL
+        model = A2C_MODEL
         if model is not None:
             saver.restore(sess, model)
             print('\nModel restored')
@@ -94,7 +95,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
             critic_params = critic_net.get_critic_params()
 
             for i in range(NUM_AGENTS):
-                net_params_queues[i].put([actor_params, critic_params])  # TODO: Do not forget to check asynchronous way
+                net_params_queues[i].put([actor_params, critic_params])
 
             total_len = 0.0
             reward_sum = 0.0
@@ -124,12 +125,9 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 entropy_sum += np.sum(info['entropy'])
                 agents_sum += 1.0
 
-            # compute aggregated gradient
-            # TODO: Check it
             assert NUM_AGENTS == len(actor_gradient_matrix)
             assert len(actor_gradient_matrix) == len(critic_gradient_matrix)
 
-            # TODO: Check it
             for i in range(len(actor_gradient_matrix)):
                 actor_net.apply_gradients(actor_gradient_matrix[i])
                 critic_net.apply_gradients(critic_gradient_matrix[i])
@@ -144,7 +142,8 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
 
             summary = sess.run(model_ops, feed_dict={
                 model_vars[0]: td_loss_avg,
-                model_vars[1]: reward_avg
+                model_vars[1]: reward_avg,
+                model_vars[2]: entropy_avg
             })
 
             writer.add_summary(summary, epoch)
@@ -152,7 +151,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
 
             if epoch % 100 == 0:
                 # Save the neural net parameters to disk.
-                save_path = saver.save(sess, SUMMARY_DIR + '/model/' + "/model_epoch_" +
+                save_path = saver.save(sess, MODEL_DIR + "model_epoch_" +
                                        str(epoch) + ".ckpt")
                 logging.info("Model saved in file: " + save_path)
                 # testing(epoch,
@@ -178,8 +177,8 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
         # TODO: Check where to include last_action parameter
         # Initialize some parameters
-        last_action = DEFAULT_ACTION
-        action = last_action
+        #last_action = DEFAULT_ACTION
+        action = DEFAULT_ACTION
 
         # Vectors for storing values: states, actions, rewards.
         actions = np.zeros(NUM_ACTION)
@@ -217,7 +216,8 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
-            curr_state[0, -1] = 1  # Bitrate
+            curr_state[0, -1] = PROFILES[bitrate_out]  # Bitrate
+            1: {1080: 50}
             curr_state[1, -1] = 2  # Rescaling? Yes or nope
             curr_state[2, -1] = 3  # Usage of CPU above %
             curr_state[3, -1] = 3  # Maybe CRF to discover the next bitrate
@@ -234,6 +234,7 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
             predictions_cumsum = np.cumsum(predictions)
             # print('\nAction cumsum: ', action_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
+            # print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
             # TODO: Report action (resolution and bitrate) to vCE
             # REST/api:.../bitrate/+bitrate
@@ -279,14 +280,22 @@ def agent(agent_id, traces, net_params_queue, exp_queue):  # General agent
 
 def main():
 
+    # Remove results folder (summaries, logs and trained models) to start creating a new model
     if CLEAN > 0:
-        os.system("rm ./results/*")
+        # os.system('rm ./results/*')  # Avoid using this line in order to preserve models
+        os.system('rm ./results/summary')
+        os.system('rm ./results/logs')
+        os.system('rm ./results/model')
 
     np.random.seed(random_seed)
 
-    # Directory to place results
+    # Directory to place results and logs
     if not os.path.exists(SUMMARY_DIR):
         os.makedirs(SUMMARY_DIR)
+    if not os.path.exists(LOGS_DIR):
+        os.makedirs(LOGS_DIR)
+    if not os.path.exists(MODEL_DIR):
+        os.makedirs(MODEL_DIR)
 
     # Inter-process communication queues
     net_params_queues = []

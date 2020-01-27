@@ -21,7 +21,7 @@ def model_summary():
     avg_entropy = tf.Variable(0.)
     tf.summary.scalar("Avg_entropy", avg_entropy)
 
-    model_vars = [td_loss, total_reward]
+    model_vars = [td_loss, total_reward, avg_entropy]
     model_ops = tf.summary.merge_all()
 
     return model_vars, model_ops
