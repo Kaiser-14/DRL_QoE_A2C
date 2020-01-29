@@ -1,8 +1,8 @@
 import tflearn
 import tensorflow as tf
-from keras.models import Sequential, Model
-from keras.layers import Dense, Dropout, Input
-from keras.layers.merge import Add, Multiply
+from keras.models import Model
+from keras.layers import Dense, Input
+from keras.layers.merge import Add
 from keras.optimizers import Adam
 
 
@@ -84,26 +84,26 @@ class Critic(object):
 
             return input_critic, output_critic
 
-    def train(self, inputs, td_target):
+    def train(self, input, td_target):
         return self.sess.run([self.loss, self.optimize], feed_dict={
-            self.inputs: inputs,
+            self.input: input,
             self.td_target: td_target
         })
 
-    def predict(self, inputs):
-        return self.sess.run(self.out, feed_dict={
-            self.inputs: inputs
+    def predict(self, input):
+        return self.sess.run(self.output, feed_dict={
+            self.input: input
         })
 
-    def get_td(self, inputs, td_target):
+    def get_td(self, input, td_target):
         return self.sess.run(self.td, feed_dict={
-            self.inputs: inputs,
+            self.input: input,
             self.td_target: td_target
         })
 
-    def get_gradients(self, inputs, td_target):
+    def get_gradients(self, input, td_target):
         return self.sess.run(self.critic_gradients, feed_dict={
-            self.inputs: inputs,
+            self.input: input,
             self.td_target: td_target
         })
 

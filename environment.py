@@ -57,4 +57,3 @@ def compute_entropy(info):
         if 0 < info[i] < 1:
             entropy -= info[i] * np.log(info[i])
     return entropy
-
