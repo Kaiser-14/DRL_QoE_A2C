@@ -2,12 +2,20 @@ import environment
 import actor
 import critic
 
+from environment import consume_kafka, assign_profile
+
 import os
 import logging
 import time
 import numpy as np
 import multiprocessing as mp
 import tensorflow as tf
+
+from kafka import KafkaProducer, KafkaConsumer, TopicPartition
+from time import sleep
+from json import dumps
+from pymongo import MongoClient
+from json import loads
 
 # TODO: Check CUDA
 # os.environ['CUDA_VISIBLE_DEVICES']=''
@@ -171,7 +179,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
         actor_net.set_actor_params(actor_net_params)
         critic_net.set_critic_params(critic_net_params)
 
-        # Initialize action
+        # Initialize action TODO: set action by initial parameter received from Kafka
         action = DEFAULT_ACTION
 
         # Vectors for storing values: states, actions, rewards.
@@ -190,18 +198,24 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # TODO: Streaming calls
             # Server
             # free_capacity = API_CALL()
+            while True:
+                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka()
+                if result:
+                    break;
+                else:
+                    sleep(1)
 
             bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
             bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
 
-            resolution_out = list(PROFILES[1].keys())[0]  # Resolution
+            # resolution_out = list(PROFILES[1].keys())[0]  # Resolution
 
             # TODO: create correctly reward function after Kafka
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
-            reward = 0
+            reward = alpha*pMOS - beta*(bitrate_tx / bitrate_rx)
             rewards_matrix.append(reward)
 
-            # last_action = action
+
 
             if len(states_matrix) == 0:
                 curr_state = [np.zeros((NUM_STATES, LEN_STATES))]
@@ -223,12 +237,21 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
             # print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
+            states_matrix.append(curr_state)
+            last_action = action
+
+            # profile_in = assign_profile(resolution, bitrate_rx)
+            # br = list(PROFILES[profile_in].values())[0]
+
+            # Report to Kafka
+            write_kafka(producer, profile);
+
             # TODO: Report action (resolution and bitrate) to vCE
             # REST/api:.../bitrate/+bitrate
             # REST/api:.../bitrate/+resolution
 
             # FIXME: Adapt timer to the behaviour of the system
-            time.sleep(5)
+            time.sleep(1)
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
@@ -283,6 +306,39 @@ def main():
     for i in range(NUM_AGENTS):
         net_params_queues.append(mp.Queue(1))
         exp_queues.append(mp.Queue(1))
+
+    # Kafka
+    # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
+    # TODO: Tune parameters
+    consumer = KafkaConsumer(
+        'numtest',
+        bootstrap_servers=['localhost:9092'],
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        group_id='my-group',
+        value_deserializer=lambda x: loads(x.decode('utf-8')))
+    consumer.assign([TopicPartition('foobar', 2)])
+
+    #client = MongoClient('localhost:27017')
+    #collection = client.numtest.numtest
+
+    producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
+                             value_serializer=lambda x:
+                             dumps(x).encode('utf-8'))
+
+    # Get last message to initialize parameters
+    try:
+        with open('kafka_metrics.log', 'r') as kafka_log:
+            for line in kafka_log:
+                values = line.split()  # Possible values: timestamp, bitrate sent and received, resolution, block_loss
+                a = values[0]
+                b = values[1]
+
+    except Exception as ex:
+        kafka_log = open('kafka_metrics.log', 'w')
+        kafka_log.close()
+
+
 
     # Create a coordinator and multiple agent processes
     # (note: threading is not desirable due to python GIL)

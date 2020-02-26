@@ -1,5 +1,10 @@
 import numpy as np
 import tensorflow as tf
+import datetime
+
+# Different profiles combining resolutions and bitrate
+PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
+            8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
 
 RANDOM_SEED = 42
 GAMMA = 0.99
@@ -57,3 +62,45 @@ def compute_entropy(info):
         if 0 < info[i] < 1:
             entropy -= info[i] * np.log(info[i])
     return entropy
+
+
+# TODO: Check good behaviour, based on result
+def consume_kafka():
+    with open('kafka.log', 'r') as kafka_log:
+        for line in kafka_log:
+            values = line.split()
+
+            timestamp = values[0]
+            bitrate_tx = values[0]
+            bitrate_rx = values[1]
+            resolution = values[3]
+            pMOS = values[4]
+            result = 1
+
+            # TODO: Link capacity, CPU_Usage
+
+
+    return timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result
+
+
+def write_kafka():
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+    t = producer.send(KAFKA_EXECUTION_TOPIC["uc2_exec"], metric)
+
+
+def assign_profile(resolution, bitrate):
+    bitrate_list = np.reshape([list(item.values())[0] for item in list(PROFILES.values())], (2, 6))
+
+    if resolution == 1080:
+        comparison_list = abs(bitrate_list[0] - bitrate)
+        profile = np.argmin(comparison_list) + 1
+
+    elif resolution == 720:
+        comparison_list = abs(bitrate_list[1] - bitrate)
+        profile = np.argmin(comparison_list) + 7
+
+    else:  # TODO: Control resolutions
+        print('Wrong resolution')
+
+    return profile
