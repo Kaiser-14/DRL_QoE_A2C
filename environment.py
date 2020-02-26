@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import datetime
+import json
 
 # Different profiles combining resolutions and bitrate
 PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
@@ -65,28 +66,45 @@ def compute_entropy(info):
 
 
 # TODO: Check good behaviour, based on result
-def consume_kafka():
-    with open('kafka.log', 'r') as kafka_log:
-        for line in kafka_log:
-            values = line.split()
+def consume_kafka(consumer, collection):
+    #with open('kafka.log', 'r') as kafka_log:
+    #message = consumer.poll()
+    for message in consumer:
+        print('Message before: {}'.format(message))
+        message = message.value
+        print('Message after: {}'.format(message))
+        message = json.loads(message.value.decode())
+        collection.insert_one(message)
+        print('{} added to {}'.format(message, collection))
+        values = message.split()
+        timestamp = values[0]
+        bitrate_tx = values[0]
+        bitrate_rx = values[1]
+        resolution = values[3]
+        pMOS = values[4]
+        result = 1  # TODO: Assign based on parameters
 
-            timestamp = values[0]
-            bitrate_tx = values[0]
-            bitrate_rx = values[1]
-            resolution = values[3]
-            pMOS = values[4]
-            result = 1
+        # for line in kafka_log:
+        #     values = line.split()
+        #
+        #     timestamp = values[0]
+        #     bitrate_tx = values[0]
+        #     bitrate_rx = values[1]
+        #     resolution = values[3]
+        #     pMOS = values[4]
+        #     result = 1
 
             # TODO: Link capacity, CPU_Usage
-
 
     return timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result
 
 
-def write_kafka():
-    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
-
-    t = producer.send(KAFKA_EXECUTION_TOPIC["uc2_exec"], metric)
+# TODO: Remove. Not needed for project
+# def write_kafka():
+#     timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
+#
+#     future = producer.send(KAFKA_EXECUTION_TOPIC["drl_tfm"], metric)
+#     result = future.get
 
 
 def assign_profile(resolution, bitrate):

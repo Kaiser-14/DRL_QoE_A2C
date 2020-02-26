@@ -10,6 +10,7 @@ import time
 import numpy as np
 import multiprocessing as mp
 import tensorflow as tf
+import requests
 
 from kafka import KafkaProducer, KafkaConsumer, TopicPartition
 from time import sleep
@@ -35,9 +36,11 @@ TRAINING_REPORT = 100  # Batch to write information into the logs
 # Different profiles combining resolutions and bitrate
 PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
+RESOLUTIONS = {1080: 1, 720: 0}
 
 DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
-MAX_BITRATE = max(list(x.keys())[0] for x in list(PROFILES.values()))
+MAX_BITRATE = max(list(x.values())[0] for x in list(PROFILES.values()))
+MAX_CAPACITY = 20000000.0  # 20MB
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -55,6 +58,8 @@ MODEL_DIR = './results/model/'
 # Kafka parameters
 # KAFKA_URL = /api/datasources/proxy/:datasourceId/*  # Check URL
 # KAFKA_PORT = {'address':"address"}
+KAFKA_TOPIC = 'a2c_mod'
+KAFKA_SERVER = ['localhost:9092']
 
 # Other parameters
 # TODO: Tune parameters
@@ -166,7 +171,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 #     log_test_file)
 
 
-def agent(agent_id, net_params_queue, exp_queue):  # General agent
+def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # General agent
 
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
@@ -199,7 +204,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # Server
             # free_capacity = API_CALL()
             while True:
-                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka()
+                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka(consumer, collection)
                 if result:
                     break;
                 else:
@@ -224,11 +229,10 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
-            # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number)
-            curr_state[0, -1] = bitrate_in / MAX_BITRATE  # Bitrate
-            curr_state[1, -1] = bitrate_out / MAX_BITRATE  # Bitrate
-            curr_state[2, -1] = resolution_out / MAX_BITRATE  # Resolution  # TODO: Should we give a fraction?
-            # curr_state[3, -1] = free_capacity
+            # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
+            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality
+            curr_state[1, -1] = bitrate_out / MAX_CAPACITY  # Available capacity: limited to 50Mbps
+            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 or 720
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', action_predicted)
@@ -243,12 +247,23 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # profile_in = assign_profile(resolution, bitrate_rx)
             # br = list(PROFILES[profile_in].values())[0]
 
-            # Report to Kafka
-            write_kafka(producer, profile);
 
             # TODO: Report action (resolution and bitrate) to vCE
-            # REST/api:.../bitrate/+bitrate
-            # REST/api:.../bitrate/+resolution
+            # Resolution
+            # curl -XPOST http://ip:3000/bitrate/150000
+            # https://curl.trillworks.com/#
+            # response = requests.get('https://api.test.com/', auth=('some_username', 'some_password'))
+            response = requests.post('http://ip:3000/bitrate/150000')
+            # https://realpython.com/python-requests/
+            if response.status_code == 200:  # if response:
+                print('Report to the vCE success')
+            elif response.status_code == 404:  # else:
+                print('Report to the vCE success not found')
+
+            # Bitrate. Change trough SSH
+            # https://stackoverflow.com/questions/3586106/perform-commands-over-ssh-with-python
+            #post /resolution/low
+            #post /resolution/high
 
             # FIXME: Adapt timer to the behaviour of the system
             time.sleep(1)
@@ -256,10 +271,13 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
             # TODO: Add more information to the logs
-            log_file.write(str(time_stamp) + '\t' +
+            log_file.write(str(timestamp) + '\t' +
                            str(reward) + '\t' +
                            str(bitrate_in) + '\t' +
-                           str(bitrate_out) + '\n'
+                           str(bitrate_out) + '\t' +
+                           str(resolution) + '\t' +
+                           str(pMOS) +
+                           '\n'
                            )
 
             log_file.flush()
@@ -311,20 +329,19 @@ def main():
     # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
     # TODO: Tune parameters
     consumer = KafkaConsumer(
-        'numtest',
-        bootstrap_servers=['localhost:9092'],
-        auto_offset_reset='earliest',
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_SERVER,
+        auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
         enable_auto_commit=True,
-        group_id='my-group',
+        group_id=None,
         value_deserializer=lambda x: loads(x.decode('utf-8')))
-    consumer.assign([TopicPartition('foobar', 2)])
 
-    #client = MongoClient('localhost:27017')
-    #collection = client.numtest.numtest
+    client = MongoClient('localhost:27017')
+    collection = client.drltfm.drltfm
 
-    producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
-                             value_serializer=lambda x:
-                             dumps(x).encode('utf-8'))
+    # producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
+    #                          value_serializer=lambda x:
+    #                          dumps(x).encode('utf-8'))
 
     # Get last message to initialize parameters
     try:
@@ -347,12 +364,15 @@ def main():
 
     agents = []
     for id_agent in range(NUM_AGENTS):
-        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent])))
+        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent],
+                                                     consumer, collection)))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 
     # Training done
     coordinator.join()
+    consumer.close()
+    # producer.close()
     print("------------DONE-----------------")
 
 
