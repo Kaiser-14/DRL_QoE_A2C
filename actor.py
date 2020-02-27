@@ -68,18 +68,19 @@ class Actor(object):
             input_actor = tflearn.input_data(shape=[None, self.states_dim[0], self.states_dim[1]])
 
             split_0 = tflearn.fully_connected(input_actor[:, 0:1, -1], 128, activation='relu')
-            split_1 = tflearn.fully_connected(input_actor[:, 1:2, -1], 128, activation='relu')
-            split_2 = tflearn.conv_1d(input_actor[:, 2:3, :], 128, 4, activation='relu')
-            split_3 = tflearn.conv_1d(input_actor[:, 3:4, :], 128, 4, activation='relu')
-            split_4 = tflearn.conv_1d(input_actor[:, 4:5, : self.actions_dim], 128, 4, activation='relu')
+            #split_1 = tflearn.fully_connected(input_actor[:, 1:2, -1], 128, activation='relu')
+            split_2 = tflearn.conv_1d(input_actor[:, 1:2, :], 128, 4, activation='relu')
+            split_3 = tflearn.conv_1d(input_actor[:, 2:3, :], 128, 4, activation='relu')
+            #split_4 = tflearn.conv_1d(input_actor[:, 4:5, : self.actions_dim], 128, 4, activation='relu')
             split_5 = tflearn.fully_connected(input_actor[:, 4:5, -1], 128, activation='relu')
 
             split_2_flat = tflearn.flatten(split_2)
             split_3_flat = tflearn.flatten(split_3)
-            split_4_flat = tflearn.flatten(split_4)
+            #split_4_flat = tflearn.flatten(split_4)
 
-            merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
-
+            #merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
+            merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat],
+                                      'concat')
             dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
             output_actor = tflearn.fully_connected(dense_net_0, self.actions_dim, activation='softmax')
 
@@ -91,15 +92,15 @@ class Actor(object):
                                                 self.actor_weights: actor_weights
                                                 })
 
-    def predict(self, input):
+    def predict(self, input_tf):
         return self.sess.run(self.output, feed_dict={
-            self.input: input
+            self.input: input_tf
         })
 
     # Could be set in code
-    def get_gradients(self, input, actions, actor_weights):
+    def get_gradients(self, input_tf, actions, actor_weights):
         return self.sess.run(self.actor_grads, feed_dict={
-                                                          self.input: input,
+                                                          self.input: input_tf,
                                                           self.actions: actions,
                                                           self.actor_weights: actor_weights
                                                           })

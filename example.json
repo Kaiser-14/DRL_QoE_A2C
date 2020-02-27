@@ -1,0 +1,39 @@
+{
+    "Time_stamp": "2020-02-27 12:45:33 CET",
+    "Mac_addr": "02:42:ac:11:00:04",
+    "videoSRC": {
+        "url": "udp://172.17.0.4:5678?buffer_size=10000000&fifo_size=1000000",
+        "nb_streams": 2
+    },
+    "videoSettings": {
+        "codec": "mpeg2video",
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": 25.0,
+        "bitrate": 1432.52,
+        "duration": 1.0,
+        "scan_type": "progressive",
+        "pix_format": "yuv420p",
+        "temp_inf_max": 14.700973512204916,
+        "temp_inf_min": 4.233732855397408,
+        "spat_inf_max": 30.30688010662255,
+        "spat_inf_min": 26.906086256122696,
+        "blurring_max": 59.13458960210972,
+        "blurring_min": 35.737736171793688
+    },
+    "audioSettings": {
+        "codec": "mp2",
+        "sample_rate": 44100,
+        "channels": 2,
+        "bitrate": 0.384
+    },
+    "Predictions": {
+        "method": "epsilonSVR",
+        "confidence_intervals": [
+            2.44,
+            2.48
+        ],
+        "percentage": "95%",
+        "mos": 1.0
+    }
+}

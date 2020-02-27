@@ -24,7 +24,7 @@ from json import loads
 # print(device_lib.list_local_devices())
 
 
-NUM_AGENTS = 4
+NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
 random_seed = 42
 
@@ -58,8 +58,8 @@ MODEL_DIR = './results/model/'
 # Kafka parameters
 # KAFKA_URL = /api/datasources/proxy/:datasourceId/*  # Check URL
 # KAFKA_PORT = {'address':"address"}
-KAFKA_TOPIC = 'a2c_mod'
-KAFKA_SERVER = ['localhost:9092']
+KAFKA_TOPIC = 'a2c.mod'
+KAFKA_SERVER = ['localhost:2181']
 
 # Other parameters
 # TODO: Tune parameters
@@ -82,7 +82,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
     # FIXME: Insert the code to check GPU device working.
     # with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess, open(LOGS_DIR + '_test', 'w')
     # as log_test_file:
-    with tf.Session() as sess, open(LOGS_DIR + '_test', 'w') as log_test_file:
+    with tf.Session() as sess, open(LOGS_DIR + 'log_test', 'w') as log_test_file:
         log_test_file.flush()  # Only to silent the python-check
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
@@ -145,12 +145,13 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 critic_net.apply_gradients(critic_gradient_matrix[i])
 
             epoch += 1
+            print('Epoch {}'.format(epoch))
             reward_avg = reward_sum / agents_sum
             td_loss_avg = tdloss_sum / total_len
             entropy_avg = entropy_sum / total_len
 
-            logging.info('Epoch: ' + str(epoch) + ' TD Loss: ' + str(td_loss_avg) +
-                         ' Average Reward: ' + str(reward_avg) + ' Average Entropy: ' + str(entropy_avg))
+            logging.info('Epoch: ' + str(epoch) + ' TD_Loss: ' + str(td_loss_avg) +
+                         ' Average_Reward: ' + str(reward_avg) + ' Average_Entropy: ' + str(entropy_avg))
 
             summary = sess.run(model_ops, feed_dict={
                 model_vars[0]: td_loss_avg,
@@ -169,9 +170,14 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 # testing(epoch,
                 #     SUMMARY_DIR + '/model/' + "/model_epoch_" + str(epoch) + ".ckpt",
                 #     log_test_file)
+                log_test_file.write(str(epoch) + '\t' +
+                               str(td_loss_avg) + '\t' +
+                               str(reward_avg) + '\t' +
+                               str(entropy_avg) + '\n')
+                log_test_file.flush()
 
 
-def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # General agent
+def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
@@ -184,8 +190,9 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
         actor_net.set_actor_params(actor_net_params)
         critic_net.set_critic_params(critic_net_params)
 
-        # Initialize action TODO: set action by initial parameter received from Kafka
+        # Initialize action
         action = DEFAULT_ACTION
+        last_action = action
 
         # Vectors for storing values: states, actions, rewards.
         actions = np.zeros(NUM_ACTION)
@@ -196,22 +203,23 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
         rewards_matrix = []
         entropy_matrix = []
 
-        time_stamp = 0
+        #timestamp = 0
+        #time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
 
         while True:
 
-            # TODO: Streaming calls
+            # TODO: Streaming calls. Should I wait until coincide bitrate_tx with previous bitrate_rx?
             # Server
             # free_capacity = API_CALL()
             while True:
-                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka(consumer, collection)
+                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka()
                 if result:
                     break;
                 else:
                     sleep(1)
 
-            bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
-            bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
+            #bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
+            #bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
 
             # resolution_out = list(PROFILES[1].keys())[0]  # Resolution
 
@@ -219,8 +227,6 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
             reward = alpha*pMOS - beta*(bitrate_tx / bitrate_rx)
             rewards_matrix.append(reward)
-
-
 
             if len(states_matrix) == 0:
                 curr_state = [np.zeros((NUM_STATES, LEN_STATES))]
@@ -230,16 +236,17 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
             # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
-            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality
-            curr_state[1, -1] = bitrate_out / MAX_CAPACITY  # Available capacity: limited to 50Mbps
+            curr_state[0, -1] = bitrate_rx / MAX_BITRATE  # Quality
+            curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
             curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 or 720
+            #curr_state[3, -1] = cpu_usage;
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
-            # print('\nAction predicted: ', action_predicted)
+            print('\nAction predicted: ', predictions)
             predictions_cumsum = np.cumsum(predictions)
-            # print('\nAction cumsum: ', action_cumsum)
+            print('\nAction cumsum: ', predictions_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
-            # print('Last action: {0}. New action: {1}.'.format(last_action, action))
+            print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
             states_matrix.append(curr_state)
             last_action = action
@@ -253,12 +260,19 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
             # curl -XPOST http://ip:3000/bitrate/150000
             # https://curl.trillworks.com/#
             # response = requests.get('https://api.test.com/', auth=('some_username', 'some_password'))
-            response = requests.post('http://ip:3000/bitrate/150000')
+
+
+
+            #VCE_IP = '1.1.1.1'
+            #POST_MESSAGE = 'http://' + VCE_IP + '/bitrate/' + bitrate_rx
+            #response = requests.post(POST_MESSAGE)
             # https://realpython.com/python-requests/
-            if response.status_code == 200:  # if response:
-                print('Report to the vCE success')
-            elif response.status_code == 404:  # else:
-                print('Report to the vCE success not found')
+            #if response.status_code == 200:  # if response:
+            #    print('Report to the vCE success')
+            #elif response.status_code == 404:  # else:
+            #    print('Report to the vCE success not found')
+
+
 
             # Bitrate. Change trough SSH
             # https://stackoverflow.com/questions/3586106/perform-commands-over-ssh-with-python
@@ -273,8 +287,8 @@ def agent(agent_id, net_params_queue, exp_queue, consumer, collection):  # Gener
             # TODO: Add more information to the logs
             log_file.write(str(timestamp) + '\t' +
                            str(reward) + '\t' +
-                           str(bitrate_in) + '\t' +
-                           str(bitrate_out) + '\t' +
+                           str(bitrate_tx) + '\t' +
+                           str(bitrate_rx) + '\t' +
                            str(resolution) + '\t' +
                            str(pMOS) +
                            '\n'
@@ -328,32 +342,32 @@ def main():
     # Kafka
     # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
     # TODO: Tune parameters
-    consumer = KafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_SERVER,
-        auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
-        enable_auto_commit=True,
-        group_id=None,
-        value_deserializer=lambda x: loads(x.decode('utf-8')))
+    # consumer = KafkaConsumer(
+    #     KAFKA_TOPIC,
+    #     bootstrap_servers=KAFKA_SERVER,
+    #     auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
+    #     enable_auto_commit=True,
+    #     group_id=None,
+    #     value_deserializer=lambda x: loads(x.decode('utf-8')))
 
-    client = MongoClient('localhost:27017')
-    collection = client.drltfm.drltfm
+    #client = MongoClient('localhost:27017')
+    #collection = client.drltfm.drltfm
 
     # producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
     #                          value_serializer=lambda x:
     #                          dumps(x).encode('utf-8'))
 
     # Get last message to initialize parameters
-    try:
-        with open('kafka_metrics.log', 'r') as kafka_log:
-            for line in kafka_log:
-                values = line.split()  # Possible values: timestamp, bitrate sent and received, resolution, block_loss
-                a = values[0]
-                b = values[1]
+    # try:
+    #     with open('kafka_metrics.log', 'r') as kafka_log:
+    #         for line in kafka_log:
+    #             values = line.split()  # Possible values: timestamp, bitrate sent and received, resolution, block_loss
+    #             a = values[0]
+    #             b = values[1]
 
-    except Exception as ex:
-        kafka_log = open('kafka_metrics.log', 'w')
-        kafka_log.close()
+    # except Exception as ex:
+    #     kafka_log = open('kafka_metrics.log', 'w')
+    #     kafka_log.close()
 
 
 
@@ -364,14 +378,13 @@ def main():
 
     agents = []
     for id_agent in range(NUM_AGENTS):
-        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent],
-                                                     consumer, collection)))
+        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent])))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 
     # Training done
-    coordinator.join()
-    consumer.close()
+    #coordinator.join()
+    #consumer.close()
     # producer.close()
     print("------------DONE-----------------")
 

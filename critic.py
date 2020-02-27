@@ -84,26 +84,26 @@ class Critic(object):
 
             return input_critic, output_critic
 
-    def train(self, input, td_target):
+    def train(self, input_tf, td_target):
         return self.sess.run([self.loss, self.optimize], feed_dict={
-            self.input: input,
+            self.input: input_tf,
             self.td_target: td_target
         })
 
-    def predict(self, input):
+    def predict(self, input_tf):
         return self.sess.run(self.output, feed_dict={
-            self.input: input
+            self.input: input_tf
         })
 
-    def get_td(self, input, td_target):
+    def get_td(self, input_tf, td_target):
         return self.sess.run(self.td, feed_dict={
-            self.input: input,
+            self.input: input_tf,
             self.td_target: td_target
         })
 
-    def get_gradients(self, input, td_target):
+    def get_gradients(self, input_tf, td_target):
         return self.sess.run(self.critic_gradients, feed_dict={
-            self.input: input,
+            self.input: input_tf,
             self.td_target: td_target
         })
 

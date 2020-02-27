@@ -66,23 +66,35 @@ def compute_entropy(info):
 
 
 # TODO: Check good behaviour, based on result
-def consume_kafka(consumer, collection):
-    #with open('kafka.log', 'r') as kafka_log:
-    #message = consumer.poll()
-    for message in consumer:
-        print('Message before: {}'.format(message))
-        message = message.value
-        print('Message after: {}'.format(message))
-        message = json.loads(message.value.decode())
-        collection.insert_one(message)
-        print('{} added to {}'.format(message, collection))
-        values = message.split()
-        timestamp = values[0]
-        bitrate_tx = values[0]
-        bitrate_rx = values[1]
-        resolution = values[3]
-        pMOS = values[4]
-        result = 1  # TODO: Assign based on parameters
+def consume_kafka():
+    with open('example.json', 'r') as file:
+        data = json.load(file)
+
+        timestamp = data['Time_stamp']
+        bitrate_tx = data['videoSettings']['bitrate']
+        bitrate_rx = data['videoSettings']['bitrate']
+        resolution = data['videoSettings']['height']
+        pMOS = data['Predictions']['mos']
+
+        result = 1
+
+    # message = consumer.poll()
+
+    #TODO: Correct
+    #for message in consumer:
+        # print('Message before: {}'.format(message))
+        # message = message.value
+        # print('Message after: {}'.format(message))
+        # message = json.loads(message.value.decode())
+        # collection.insert_one(message)
+        # print('{} added to {}'.format(message, collection))
+        # values = message.split()
+        # timestamp = values[0]
+        # bitrate_tx = values[0]
+        # bitrate_rx = values[1]
+        # resolution = values[3]
+        # pMOS = values[4]
+        # result = 1  # TODO: Assign based on parameters
 
         # for line in kafka_log:
         #     values = line.split()
@@ -97,14 +109,6 @@ def consume_kafka(consumer, collection):
             # TODO: Link capacity, CPU_Usage
 
     return timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result
-
-
-# TODO: Remove. Not needed for project
-# def write_kafka():
-#     timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
-#
-#     future = producer.send(KAFKA_EXECUTION_TOPIC["drl_tfm"], metric)
-#     result = future.get
 
 
 def assign_profile(resolution, bitrate):
