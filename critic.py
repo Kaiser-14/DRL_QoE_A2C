@@ -7,10 +7,10 @@ from keras.optimizers import Adam
 
 
 class Critic(object):
-    def __init__(self, sess, states_dim, actions_dim, learning_rate):
+    def __init__(self, sess, states_dim, learning_rate):
         self.sess = sess
         self.states_dim = states_dim
-        self.actions_dim = actions_dim
+        #self.actions_dim = actions_dim
         self.learning_rate = learning_rate
 
         # Creating the full critic network
@@ -67,17 +67,18 @@ class Critic(object):
             input_critic = tflearn.input_data(shape=[None, self.states_dim[0], self.states_dim[1]])
 
             split_0 = tflearn.fully_connected(input_critic[:, 0:1, -1], 128, activation='relu')
-            split_1 = tflearn.fully_connected(input_critic[:, 1:2, -1], 128, activation='relu')
-            split_2 = tflearn.conv_1d(input_critic[:, 2:3, :], 128, 4, activation='relu')
-            split_3 = tflearn.conv_1d(input_critic[:, 3:4, :], 128, 4, activation='relu')
-            split_4 = tflearn.conv_1d(input_critic[:, 4:5, :self.actions_dim], 128, 4, activation='relu')
-            split_5 = tflearn.fully_connected(input_critic[:, 4:5, -1], 128, activation='relu')
+            #split_1 = tflearn.fully_connected(input_critic[:, 1:2, -1], 128, activation='relu')
+            split_2 = tflearn.conv_1d(input_critic[:, 1:2, :], 128, 4, activation='relu')
+            split_3 = tflearn.conv_1d(input_critic[:, 2:3, :], 128, 4, activation='relu')
+            #split_4 = tflearn.conv_1d(input_critic[:, 4:5, :self.actions_dim], 128, 4, activation='relu')
+            #split_5 = tflearn.fully_connected(input_critic[:, 4:5, -1], 128, activation='relu')
 
             split_2_flat = tflearn.flatten(split_2)
             split_3_flat = tflearn.flatten(split_3)
-            split_4_flat = tflearn.flatten(split_4)
+            #split_4_flat = tflearn.flatten(split_4)
 
-            merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
+            #merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
+            merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat], 'concat')
 
             dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
             output_critic = tflearn.fully_connected(dense_net_0, 1, activation='linear')

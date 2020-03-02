@@ -31,7 +31,10 @@ def model_summary():
     return model_vars, model_ops
 
 
-def compute_gradients(states_matrix, actions_matrix, rewards_matrix, terminal, actor_net, critic_net):
+def compute_gradients(states_matrix, actions_matrix, rewards_matrix, actor_net, critic_net):
+    print('States Matrix {}'.format(states_matrix.shape[0]))
+    print('Action Matrix {}'.format(actions_matrix.shape[0]))
+    print('Rewards Matrix {}'.format(rewards_matrix.shape[0]))
     assert states_matrix.shape[0] == actions_matrix.shape[0]
     assert states_matrix.shape[0] == rewards_matrix.shape[0]
 
@@ -41,10 +44,10 @@ def compute_gradients(states_matrix, actions_matrix, rewards_matrix, terminal, a
 
     r_matrix = np.zeros(rewards_matrix.shape)
 
-    if terminal:
-        r_matrix[-1, 0] = 0  # terminal state
-    else:
-        r_matrix[-1, 0] = v_matrix[-1, 0]  # boot strap from last state
+    # if terminal:
+    #     r_matrix[-1, 0] = 0  # terminal state
+    # else:
+    #     r_matrix[-1, 0] = v_matrix[-1, 0]  # boot strap from last state
 
     for t in reversed(range(ba_size - 1)):
         r_matrix[t, 0] = rewards_matrix[t] + GAMMA * r_matrix[t + 1, 0]
@@ -72,7 +75,7 @@ def consume_kafka():
 
         timestamp = data['Time_stamp']
         bitrate_tx = data['videoSettings']['bitrate']
-        bitrate_rx = data['videoSettings']['bitrate']
+        bitrate_rx = 1032.52
         resolution = data['videoSettings']['height']
         pMOS = data['Predictions']['mos']
 

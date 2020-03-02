@@ -82,11 +82,10 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
     # FIXME: Insert the code to check GPU device working.
     # with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess, open(LOGS_DIR + '_test', 'w')
     # as log_test_file:
-    with tf.Session() as sess, open(LOGS_DIR + 'log_test', 'w') as log_test_file:
-        log_test_file.flush()  # Only to silent the python-check
+    with tf.Session() as sess:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
-        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES],  actions_dim=NUM_ACTION,
+        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES],
                                    learning_rate=CRITIC_LR)
 
         model_vars, model_ops = environment.model_summary()
@@ -120,13 +119,26 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
             critic_gradient_matrix = []
 
             for i in range(NUM_AGENTS):
-                states_matrix, actions_matrix, rewards_matrix, terminal, info = exp_queues[i].get()
+                states_matrix, actions_matrix, rewards_matrix, info = exp_queues[i].get()
+                print('states_matrix: {}'.format(states_matrix))
+                print('actions_matrix: {}'.format(actions_matrix))
+                print('rewards_matrix: {}'.format(rewards_matrix))
+                # print('info: {}'.format(info))
+                # sleep(5)
+                print('Longitud states: {}'.format(len(states_matrix)))
+                print('Longitud actions: {}'.format(len(actions_matrix)))
+                print('Longitud reward: {}'.format(len(rewards_matrix)))
+
+                #print(s.shape[0])
+                #print(a.shape[0])
+                #print(r.shape[0])
+                sleep(1)
 
                 actor_gradients, critic_gradients, td_matrix = environment.compute_gradients(
                         states_matrix=np.stack(states_matrix, axis=0),
                         actions_matrix=np.vstack(actions_matrix),
                         rewards_matrix=np.vstack(rewards_matrix),
-                        terminal=terminal, actor_net=actor_net, critic_net=critic_net)
+                        actor_net=actor_net, critic_net=critic_net)
 
                 actor_gradient_matrix.append(actor_gradients)
                 critic_gradient_matrix.append(critic_gradients)
@@ -170,11 +182,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 # testing(epoch,
                 #     SUMMARY_DIR + '/model/' + "/model_epoch_" + str(epoch) + ".ckpt",
                 #     log_test_file)
-                log_test_file.write(str(epoch) + '\t' +
-                               str(td_loss_avg) + '\t' +
-                               str(reward_avg) + '\t' +
-                               str(entropy_avg) + '\n')
-                log_test_file.flush()
+
 
 
 def agent(agent_id, net_params_queue, exp_queue):  # General agent
@@ -182,7 +190,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
     with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
-        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
+        critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES],
                                    learning_rate=CRITIC_LR)
 
         # Initial synchronization of the network parameters from the coordinator
@@ -192,7 +200,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
         # Initialize action
         action = DEFAULT_ACTION
-        last_action = action
+        last_action = DEFAULT_ACTION
 
         # Vectors for storing values: states, actions, rewards.
         actions = np.zeros(NUM_ACTION)
@@ -216,7 +224,8 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
                 if result:
                     break;
                 else:
-                    sleep(1)
+                    print('Waiting Kafka response')
+                    #sleep(1)
 
             #bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
             #bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
@@ -225,8 +234,10 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
             # TODO: create correctly reward function after Kafka
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
-            reward = alpha*pMOS - beta*(bitrate_tx / bitrate_rx)
+            reward = alpha*pMOS - beta*(bitrate_rx / bitrate_tx)
             rewards_matrix.append(reward)
+
+            last_action = action
 
             if len(states_matrix) == 0:
                 curr_state = [np.zeros((NUM_STATES, LEN_STATES))]
@@ -238,7 +249,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
             curr_state[0, -1] = bitrate_rx / MAX_BITRATE  # Quality
             curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
-            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 or 720
+            curr_state[2, -1] = 1 #RESOLUTIONS[resolution]  # Resolution: 1080 or 720
             #curr_state[3, -1] = cpu_usage;
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
@@ -248,8 +259,10 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
             print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
-            states_matrix.append(curr_state)
-            last_action = action
+            #states_matrix.append(curr_state)
+
+            entropy_matrix.append(environment.compute_entropy(predictions[0]))
+
 
             # profile_in = assign_profile(resolution, bitrate_rx)
             # br = list(PROFILES[profile_in].values())[0]
@@ -280,9 +293,9 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             #post /resolution/high
 
             # FIXME: Adapt timer to the behaviour of the system
-            time.sleep(1)
+            #time.sleep(1)
 
-            entropy_matrix.append(environment.compute_entropy(predictions[0]))
+
 
             # TODO: Add more information to the logs
             log_file.write(str(timestamp) + '\t' +
@@ -298,7 +311,8 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
             # Report experience to the coordinator
             if len(rewards_matrix) >= TRAINING_REPORT:
-                exp_queue.put([states_matrix[1:], actions_matrix[1:], rewards_matrix[1:], {'entropy': entropy_matrix}])
+                #print('Actions:{}'.format(actions_matrix))
+                exp_queue.put([states_matrix, actions_matrix, rewards_matrix, {'entropy': entropy_matrix}])
 
                 # Sync information
                 actor_net_params, critic_net_params = net_params_queue.get()
@@ -311,6 +325,12 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
                 del entropy_matrix[:]
 
                 # log_file.write('\n')
+
+            states_matrix.append(curr_state)
+
+            actions = np.zeros(NUM_ACTION)
+            actions[action] = 1
+            actions_matrix.append(actions)
 
 
 def main():
@@ -383,10 +403,10 @@ def main():
         agents[id_agent].start()
 
     # Training done
-    #coordinator.join()
+    coordinator.join()
     #consumer.close()
     # producer.close()
-    print("------------DONE-----------------")
+    print("------------TRAINING DONE-----------------")
 
 
 if __name__ == '__main__':

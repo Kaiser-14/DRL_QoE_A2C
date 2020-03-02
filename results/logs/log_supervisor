@@ -28,5 +28,6 @@ Type is unsupported, or the types of the items don't match field type in Collect
 WARNING:tensorflow:Issue encountered when serializing data_augmentation.
 Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
 'NoneType' object has no attribute 'name'
-WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:96: The name tf.train.Saver is deprecated. Please use tf.compat.v1.train.Saver instead.
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:95: The name tf.train.Saver is deprecated. Please use tf.compat.v1.train.Saver instead.
 
+INFO:root:Epoch: 1 TD_Loss: 8.110613720392356 Average_Reward: 22.114874486918154 Average_Entropy: 2.509950244065487
