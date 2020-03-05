@@ -32,9 +32,6 @@ def model_summary():
 
 
 def compute_gradients(states_matrix, actions_matrix, rewards_matrix, actor_net, critic_net):
-    print('States Matrix {}'.format(states_matrix.shape[0]))
-    print('Action Matrix {}'.format(actions_matrix.shape[0]))
-    print('Rewards Matrix {}'.format(rewards_matrix.shape[0]))
     assert states_matrix.shape[0] == actions_matrix.shape[0]
     assert states_matrix.shape[0] == rewards_matrix.shape[0]
 
@@ -69,34 +66,45 @@ def compute_entropy(info):
 
 
 # TODO: Check good behaviour, based on result
-def consume_kafka():
-    with open('example.json', 'r') as file:
-        data = json.load(file)
+def consume_kafka(consumer):
 
-        timestamp = data['Time_stamp']
-        bitrate_tx = data['videoSettings']['bitrate']
-        bitrate_rx = 1032.52
-        resolution = data['videoSettings']['height']
-        pMOS = data['Predictions']['mos']
-
-        result = 1
+    # To check correct model working
+    # with open('example.json', 'r') as file:
+    #     data = json.load(file)
+    #
+    #     timestamp = data['Time_stamp']
+    #     bitrate_tx = data['videoSettings']['bitrate']
+    #     bitrate_rx = 1032.52
+    #     resolution = data['videoSettings']['height']
+    #     pMOS = data['Predictions']['mos']
+    #
+    #     result = 1
 
     # message = consumer.poll()
 
     #TODO: Correct
-    #for message in consumer:
+    for message in consumer:
+        # message.poll()
+        # content = json.loads(message.value.decode('utf-8', 'ignore'))
         # print('Message before: {}'.format(message))
-        # message = message.value
-        # print('Message after: {}'.format(message))
+        content = message.value
+        # content = message.value.decode('utf-8', 'ignore')
+        # print('Message after: {}'.format(content))
         # message = json.loads(message.value.decode())
+        resolution = content['value']['resolution']
+        frame_rate = content['value']['frame_rate']
+        bitrate = content['value']['bitrate']
+        duration = content['value']['duration']
+        mos = content['value']['mos']
+        break
+        # print('Res2: {}'.format(resolution))
+        # print('Bitrate: {}'.format(bitrate))
+        # print('frame_rate: {}'.format(frame_rate))
+        # print('duration: {}'.format(duration))
+        # print('mos: {}'.format(mos))
         # collection.insert_one(message)
         # print('{} added to {}'.format(message, collection))
-        # values = message.split()
-        # timestamp = values[0]
-        # bitrate_tx = values[0]
-        # bitrate_rx = values[1]
-        # resolution = values[3]
-        # pMOS = values[4]
+
         # result = 1  # TODO: Assign based on parameters
 
         # for line in kafka_log:
@@ -111,17 +119,17 @@ def consume_kafka():
 
             # TODO: Link capacity, CPU_Usage
 
-    return timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result
+    return resolution, frame_rate, bitrate, duration, mos
 
 
 def assign_profile(resolution, bitrate):
     bitrate_list = np.reshape([list(item.values())[0] for item in list(PROFILES.values())], (2, 6))
 
-    if resolution == 1080:
+    if resolution == '1080':
         comparison_list = abs(bitrate_list[0] - bitrate)
         profile = np.argmin(comparison_list) + 1
 
-    elif resolution == 720:
+    elif resolution == '720':
         comparison_list = abs(bitrate_list[1] - bitrate)
         profile = np.argmin(comparison_list) + 7
 

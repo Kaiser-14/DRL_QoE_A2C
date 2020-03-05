@@ -58,8 +58,10 @@ MODEL_DIR = './results/model/'
 # Kafka parameters
 # KAFKA_URL = /api/datasources/proxy/:datasourceId/*  # Check URL
 # KAFKA_PORT = {'address':"address"}
-KAFKA_TOPIC = 'a2c.mod'
-KAFKA_SERVER = ['localhost:2181']
+#KAFKA_TOPIC = 'tfm.a2c'
+KAFKA_TOPIC = 'notifications'
+# KAFKA_SERVER = ['217.172.11.173:9092']
+KAFKA_SERVER = ['192.168.0.55:9092']
 
 # Other parameters
 # TODO: Tune parameters
@@ -76,7 +78,7 @@ A2C_MODEL = None  # Start a fresh model
 
 
 def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
-    # FIXME: Need it?
+    # Include logging information about system behaviour
     logging.basicConfig(filename=LOGS_DIR + 'log_supervisor', filemode='w', level=logging.INFO)
 
     # FIXME: Insert the code to check GPU device working.
@@ -120,19 +122,6 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
 
             for i in range(NUM_AGENTS):
                 states_matrix, actions_matrix, rewards_matrix, info = exp_queues[i].get()
-                print('states_matrix: {}'.format(states_matrix))
-                print('actions_matrix: {}'.format(actions_matrix))
-                print('rewards_matrix: {}'.format(rewards_matrix))
-                # print('info: {}'.format(info))
-                # sleep(5)
-                print('Longitud states: {}'.format(len(states_matrix)))
-                print('Longitud actions: {}'.format(len(actions_matrix)))
-                print('Longitud reward: {}'.format(len(rewards_matrix)))
-
-                #print(s.shape[0])
-                #print(a.shape[0])
-                #print(r.shape[0])
-                sleep(1)
 
                 actor_gradients, critic_gradients, td_matrix = environment.compute_gradients(
                         states_matrix=np.stack(states_matrix, axis=0),
@@ -179,15 +168,11 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 save_path = saver.save(sess, MODEL_DIR + "model_epoch_" +
                                        str(epoch) + ".ckpt")
                 logging.info("Model saved in file: " + save_path)
-                # testing(epoch,
-                #     SUMMARY_DIR + '/model/' + "/model_epoch_" + str(epoch) + ".ckpt",
-                #     log_test_file)
 
 
+def agent(agent_id, net_params_queue, exp_queue, consumer_in):  # General agent
 
-def agent(agent_id, net_params_queue, exp_queue):  # General agent
-
-    with tf.Session() as sess, open(LOGS_DIR + 'agent' + str(agent_id), 'w') as log_file:
+    with tf.Session() as sess, open(LOGS_DIR + 'metrics_agent_' + str(agent_id+1), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
         critic_net = critic.Critic(sess, states_dim=[NUM_STATES, LEN_STATES],
@@ -216,16 +201,29 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
         while True:
 
-            # TODO: Streaming calls. Should I wait until coincide bitrate_tx with previous bitrate_rx?
-            # Server
-            # free_capacity = API_CALL()
+            counter = 0
             while True:
-                timestamp, bitrate_tx, bitrate_rx, resolution, pMOS, result = consume_kafka()
-                if result:
-                    break;
+                # timestamp, bitrate_tx, resolution_in, _ = consume_kafka(consumer_in)
+                resolution_in, frame_rate, bitrate, duration, mos = consume_kafka(consumer_in)
+                print(resolution_in)
+                bitrate_tx = 5000.0
+                pMOS = 3.0
+                bitrate_rx = 4500.0
+
+                profile_in = assign_profile(resolution_in, bitrate_tx)
+
+                # timestamp, bitrate_rx, resolution_out, pmos_out = consume_kafka(consumer_out)
+
+                # assert resolution_in == resolution_out
+
+                if profile_in == last_action and counter == 5:  # TODO: Check behaviour
+                    break
                 else:
-                    print('Waiting Kafka response')
-                    #sleep(1)
+                    counter += 1
+                    print('Waiting new measurements...')
+                    sleep(1)
+
+            # if counter == 5: break  # TODO: Check if it breakes the whole program
 
             #bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
             #bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
@@ -249,17 +247,15 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
             curr_state[0, -1] = bitrate_rx / MAX_BITRATE  # Quality
             curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
-            curr_state[2, -1] = 1 #RESOLUTIONS[resolution]  # Resolution: 1080 or 720
+            curr_state[2, -1] = RESOLUTIONS[resolution_in]  # Resolution: 1080 or 720
             #curr_state[3, -1] = cpu_usage;
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
-            print('\nAction predicted: ', predictions)
+            # print('\nAction predicted: ', predictions)
             predictions_cumsum = np.cumsum(predictions)
-            print('\nAction cumsum: ', predictions_cumsum)
+            # print('\nAction cumsum: ', predictions_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
-            print('Last action: {0}. New action: {1}.'.format(last_action, action))
-
-            #states_matrix.append(curr_state)
+            # print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
@@ -295,15 +291,16 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
             # FIXME: Adapt timer to the behaviour of the system
             #time.sleep(1)
 
-
-
             # TODO: Add more information to the logs
-            log_file.write(str(timestamp) + '\t' +
-                           str(reward) + '\t' +
-                           str(bitrate_tx) + '\t' +
-                           str(bitrate_rx) + '\t' +
-                           str(resolution) + '\t' +
-                           str(pMOS) +
+            # log_file.write(str(timestamp) + '\t' +
+            #                str(reward) + '\t' +
+            #                str(bitrate_tx) + '\t' +
+            #                str(bitrate_rx) + '\t' +
+            #                str(resolution) + '\t' +
+            #                str(pMOS) +
+            #                '\n'
+            #                )
+            log_file.write(str(resolution_in) +
                            '\n'
                            )
 
@@ -311,7 +308,6 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
 
             # Report experience to the coordinator
             if len(rewards_matrix) >= TRAINING_REPORT:
-                #print('Actions:{}'.format(actions_matrix))
                 exp_queue.put([states_matrix, actions_matrix, rewards_matrix, {'entropy': entropy_matrix}])
 
                 # Sync information
@@ -324,7 +320,7 @@ def agent(agent_id, net_params_queue, exp_queue):  # General agent
                 del rewards_matrix[:]
                 del entropy_matrix[:]
 
-                # log_file.write('\n')
+                log_file.write('\n')
 
             states_matrix.append(curr_state)
 
@@ -362,12 +358,20 @@ def main():
     # Kafka
     # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
     # TODO: Tune parameters
-    # consumer = KafkaConsumer(
+    consumer_in = KafkaConsumer(
+        KAFKA_TOPIC,
+        bootstrap_servers=KAFKA_SERVER,
+        auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest' // latest
+        enable_auto_commit=True,
+        #group_id='probe_in',
+        value_deserializer=lambda x: loads(x.decode('utf-8')))
+
+    # consumer_out = KafkaConsumer(
     #     KAFKA_TOPIC,
     #     bootstrap_servers=KAFKA_SERVER,
     #     auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
     #     enable_auto_commit=True,
-    #     group_id=None,
+    #     group_id='probe_out',
     #     value_deserializer=lambda x: loads(x.decode('utf-8')))
 
     #client = MongoClient('localhost:27017')
@@ -398,7 +402,8 @@ def main():
 
     agents = []
     for id_agent in range(NUM_AGENTS):
-        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent])))
+        agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent],
+                                                     consumer_in)))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 
