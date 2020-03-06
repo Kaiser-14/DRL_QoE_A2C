@@ -56,10 +56,8 @@ MODEL_DIR = './results/model/'
 
 
 # Kafka parameters
-# KAFKA_URL = /api/datasources/proxy/:datasourceId/*  # Check URL
-# KAFKA_PORT = {'address':"address"}
-#KAFKA_TOPIC = 'tfm.a2c'
-KAFKA_TOPIC = 'notifications'
+KAFKA_TOPIC_IN = 'tfm.probe.in'
+KAFKA_TOPIC_OUT = 'tfm.probe.out'
 # KAFKA_SERVER = ['217.172.11.173:9092']
 KAFKA_SERVER = ['192.168.0.55:9092']
 
@@ -170,7 +168,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 logging.info("Model saved in file: " + save_path)
 
 
-def agent(agent_id, net_params_queue, exp_queue, consumer_in):  # General agent
+def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # General agent
 
     with tf.Session() as sess, open(LOGS_DIR + 'metrics_agent_' + str(agent_id+1), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
@@ -203,18 +201,10 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in):  # General agent
 
             counter = 0
             while True:
-                # timestamp, bitrate_tx, resolution_in, _ = consume_kafka(consumer_in)
-                resolution_in, frame_rate, bitrate, duration, mos = consume_kafka(consumer_in)
-                print(resolution_in)
-                bitrate_tx = 5000.0
-                pMOS = 3.0
-                bitrate_rx = 4500.0
+                resolution_in, frame_rate_in, bitrate_in, duration_in, mos_in = consume_kafka(consumer_in)
+                resolution_out, frame_rate_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer_out)
 
-                profile_in = assign_profile(resolution_in, bitrate_tx)
-
-                # timestamp, bitrate_rx, resolution_out, pmos_out = consume_kafka(consumer_out)
-
-                # assert resolution_in == resolution_out
+                profile_in = assign_profile(resolution_in, bitrate_in)
 
                 if profile_in == last_action and counter == 5:  # TODO: Check behaviour
                     break
@@ -232,7 +222,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in):  # General agent
 
             # TODO: create correctly reward function after Kafka
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
-            reward = alpha*pMOS - beta*(bitrate_rx / bitrate_tx)
+            reward = alpha*mos_out - beta*(bitrate_out / bitrate_in)
             rewards_matrix.append(reward)
 
             last_action = action
@@ -245,7 +235,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in):  # General agent
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
             # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
-            curr_state[0, -1] = bitrate_rx / MAX_BITRATE  # Quality
+            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality
             curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
             curr_state[2, -1] = RESOLUTIONS[resolution_in]  # Resolution: 1080 or 720
             #curr_state[3, -1] = cpu_usage;
@@ -359,23 +349,19 @@ def main():
     # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
     # TODO: Tune parameters
     consumer_in = KafkaConsumer(
-        KAFKA_TOPIC,
+        KAFKA_TOPIC_IN,
         bootstrap_servers=KAFKA_SERVER,
         auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest' // latest
         enable_auto_commit=True,
-        #group_id='probe_in',
         value_deserializer=lambda x: loads(x.decode('utf-8')))
 
-    # consumer_out = KafkaConsumer(
-    #     KAFKA_TOPIC,
-    #     bootstrap_servers=KAFKA_SERVER,
-    #     auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
-    #     enable_auto_commit=True,
-    #     group_id='probe_out',
-    #     value_deserializer=lambda x: loads(x.decode('utf-8')))
-
-    #client = MongoClient('localhost:27017')
-    #collection = client.drltfm.drltfm
+    consumer_out = KafkaConsumer(
+        KAFKA_TOPIC_OUT,
+        bootstrap_servers=KAFKA_SERVER,
+        auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
+        enable_auto_commit=True,
+        group_id='probe_out',
+        value_deserializer=lambda x: loads(x.decode('utf-8')))
 
     # producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
     #                          value_serializer=lambda x:
@@ -403,7 +389,7 @@ def main():
     agents = []
     for id_agent in range(NUM_AGENTS):
         agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent],
-                                                     consumer_in)))
+                                                     consumer_in, consumer_out)))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 
