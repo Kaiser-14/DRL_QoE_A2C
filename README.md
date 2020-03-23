@@ -117,8 +117,7 @@ ffmpeg -re -i "udp://224.0.1.4:5678?overrun_nonfatal=1&fifo_size=50000000" -c:v 
 sudo docker login
 sudo docker ps -a
 sudo docker pull kaiser1414/upm_tfm:1.1.3
-sudo docker run -d --name probe-in kaiser1414/upm_tfm:1.1.3
-sudo docker run -d --name probe-out kaiser1414/upm_tfm:1.1.3
+sudo docker run -d --name probe -p 3007:3007 kaiser1414/upm_tfm:1.1.3
 ```
 
 2. Check images running and enter them in different terminals
@@ -138,6 +137,8 @@ nano /home/test.js
 ./videoqualityprobe -i udp://172.17.0.2:5678 -x 5gmedia -n 1000 (Terminal 1)
 ./videoqualityprobe -i udp://172.17.0.3:5678 -x 5gmedia -n 1000 (Terminal 2)
 ```
+
+5. Need to explain adding index.js to avoid probe failing
 
 # vCompression
 
