@@ -11,6 +11,7 @@ import numpy as np
 import multiprocessing as mp
 import tensorflow as tf
 import requests
+import math
 
 from kafka import KafkaProducer, KafkaConsumer, TopicPartition
 from time import sleep
@@ -54,18 +55,21 @@ SUMMARY_DIR = './results/summary/'
 LOGS_DIR = './results/logs/'
 MODEL_DIR = './results/model/'
 
-
 # Kafka parameters
 KAFKA_TOPIC_IN = 'tfm.probe.in'
 KAFKA_TOPIC_OUT = 'tfm.probe.out'
 # KAFKA_SERVER = ['217.172.11.173:9092']
 KAFKA_SERVER = ['192.168.0.55:9092']
 
+# Docker ports
+VCE_RES_PORT = '3007'
+VCE_BR_PORT = '3000'
+
 # Other parameters
 # TODO: Tune parameters
 RAND_ACTION = 1000  # Random value to decide exploratory action
-alpha = 0.8  # Reward tuning: pMOS
-beta = 0.8  # Reward tuning: Usage CPU
+alpha = 1.0  # Reward tuning: pMOS
+beta = 0.5  # Reward tuning: Usage CPU
 gamma = 0.8  # Reward tuning: Bitrate
 
 # Predefined parameters
@@ -168,7 +172,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 logging.info("Model saved in file: " + save_path)
 
 
-def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # General agent
+def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
     with tf.Session() as sess, open(LOGS_DIR + 'metrics_agent_' + str(agent_id+1), 'w') as log_file:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
@@ -201,10 +205,30 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # 
 
             counter = 0
             while True:
-                resolution_in, frame_rate_in, bitrate_in, duration_in, mos_in = consume_kafka(consumer_in)
-                resolution_out, frame_rate_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer_out)
+                # resolution_in, frame_rate_in, bitrate_in, duration_in, mos_in = consume_kafka(consumer_in)
+                resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
+                # {"status": true,
+                #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
+                #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
+                #            "pid": {"name": "PID", "value": 1100}, "pid_cpu": {"name": "CPU Usage [%]", "value": 58.3},
+                #            "pid_ram": {"name": "RAM Usage [byte]", "value": 144613376},
+                #            "gop_size": {"name": "GoP Size", "value": 25}, "num_fps": {"name": "Fps", "value": 26},
+                #            "num_frame": {"name": "Frame", "value": 1276},
+                #            "enc_quality": {"name": "Quality [0-69]", "value": 22},
+                #            "enc_dbl_time": {"name": "Encoding Time [s]", "value": 54.08},
+                #            "enc_str_time": {"name": "Encoding Time [h:m:s:ms]", "value": "00:00:54.29"},
+                #            "max_bitrate": {"name": "Maximum Bitrate [kbps]", "value": 3000},
+                #            "avg_bitrate": {"name": "Average Bitrate [kbps]", "value": 2850.4},
+                #            "act_bitrate": {"name": "Actual Bitrate [kbps]", "value": 3159.4},
+                #            "enc_speed": {"name": "Encoding Speed [x]", "value": 1.12}}}
 
-                profile_in = assign_profile(resolution_in, bitrate_in)
+                bitrate_in = resp_get_vce_br['stats']['act_bitrate']['value']
+                # ram_in = resp_get_vce_br['stats']['pid_ram']['value']
+                encoding_quality = resp_get_vce_br['stats']['enc_quality']['value']
+                # resolution_in = resp_get_vco_br['stats']['act_bitrate']  # Remove it
+                resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
+
+                profile_in = assign_profile(resolution, bitrate_in)
 
                 if profile_in == last_action and counter == 5:  # TODO: Check behaviour
                     break
@@ -220,9 +244,28 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # 
 
             # resolution_out = list(PROFILES[1].keys())[0]  # Resolution
 
+            if mos_out > 4.3: mos_points = 10
+            if mos_out < 1.5: mos_points = -10
+            if mos_out < 4.3 or mos_out > 3.7: mos_points = 5
+            if mos_out < 3.7 or mos_out > 3.2: mos_points = 0
+            if mos_out > 1.5 or mos_out < 3.2: mos_points = -5
+
             # TODO: create correctly reward function after Kafka
             # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
-            reward = alpha*mos_out - beta*(bitrate_out / bitrate_in)
+
+            # Range between 73.69 and 19.10. The main important reward
+            # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
+            rew_mos = math.exp(4) - math.exp(5-mos_out)
+
+            # Range between 15 and 0. If received same bitrate, 0 penalty, 15 if losses
+            # Possible values of bitrate x (ln(x)=): 50M=17.72; 15M=16.52; 2.5M=14.73 // 50K=10.2; 15K=9.61; 2.5K=7.82
+            rew_br = 2*ln(MAX_CAPACITY) -
+
+            # Range between 5 and 0. Cube root
+            # rew_prof = 2*math.pow(np.abs(action - last_action),1/3)
+            # rew_prof = 15* (math.log10(bitrate_out / bitrate_in))
+            #reward = 10 + alpha*mos_points - beta*(bitrate_out / bitrate_in) - gamma*(encoding_quality / 69)
+            reward = rew_mos + rew_br + rew_prof
             rewards_matrix.append(reward)
 
             last_action = action
@@ -237,7 +280,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # 
             # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
             curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality
             curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
-            curr_state[2, -1] = RESOLUTIONS[resolution_in]  # Resolution: 1080 or 720
+            curr_state[2, -1] = RESOLUTIONS[resolution_out]  # Resolution: 1080 or 720
             #curr_state[3, -1] = cpu_usage;
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
@@ -251,32 +294,35 @@ def agent(agent_id, net_params_queue, exp_queue, consumer_in, consumer_out):  # 
 
 
             # profile_in = assign_profile(resolution, bitrate_rx)
-            # br = list(PROFILES[profile_in].values())[0]
+            br_predicted = list(PROFILES[profile_in].values())[0]
+            res_predicted = list(PROFILES[profile_in].keys())[0]
 
+            if res_predicted == '1080':
+                res_out = 'high'
+            else:
+                res_out = 'low'
+            # res_out = 'high' if res_predicted == '1080' else res_out = 'low'
 
-            # TODO: Report action (resolution and bitrate) to vCE
             # Resolution
             # curl -XPOST http://ip:3000/bitrate/150000
-            # https://curl.trillworks.com/#
-            # response = requests.get('https://api.test.com/', auth=('some_username', 'some_password'))
+            # {"status":true}
+            resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
+            if resp_post_vco_res.status_code == 200:  # if response:
+                print('Report to the vCE_resolution success')
+            elif resp_post_vco_res.status_code == 404:  # else:
+                print('Report to the vCE_resolution success not found')
 
+            # Bitrate
+            # {"status":true}
+            resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + br_predicted)
+            if resp_post_vco_br.status_code == 200:  # if response:
+                print('Report to the vCE_bitrate success')
+            elif resp_post_vco_res.status_code == 404:  # else:
+                print('Report to the vCE_bitrate success not found')
 
-
-            #VCE_IP = '1.1.1.1'
-            #POST_MESSAGE = 'http://' + VCE_IP + '/bitrate/' + bitrate_rx
-            #response = requests.post(POST_MESSAGE)
-            # https://realpython.com/python-requests/
-            #if response.status_code == 200:  # if response:
-            #    print('Report to the vCE success')
-            #elif response.status_code == 404:  # else:
-            #    print('Report to the vCE success not found')
-
-
-
-            # Bitrate. Change trough SSH
-            # https://stackoverflow.com/questions/3586106/perform-commands-over-ssh-with-python
-            #post /resolution/low
-            #post /resolution/high
+            # To receive status from the vco-resolution
+            resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
+            # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
             # FIXME: Adapt timer to the behaviour of the system
             #time.sleep(1)
@@ -348,14 +394,14 @@ def main():
     # Kafka
     # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
     # TODO: Tune parameters
-    consumer_in = KafkaConsumer(
-        KAFKA_TOPIC_IN,
-        bootstrap_servers=KAFKA_SERVER,
-        auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest' // latest
-        enable_auto_commit=True,
-        value_deserializer=lambda x: loads(x.decode('utf-8')))
+    # consumer_in = KafkaConsumer(
+    #     KAFKA_TOPIC_IN,
+    #     bootstrap_servers=KAFKA_SERVER,
+    #     auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest' // latest
+    #     enable_auto_commit=True,
+    #     value_deserializer=lambda x: loads(x.decode('utf-8')))
 
-    consumer_out = KafkaConsumer(
+    consumer = KafkaConsumer(
         KAFKA_TOPIC_OUT,
         bootstrap_servers=KAFKA_SERVER,
         auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
@@ -389,13 +435,13 @@ def main():
     agents = []
     for id_agent in range(NUM_AGENTS):
         agents.append(mp.Process(target=agent, args=(id_agent, net_params_queues[id_agent], exp_queues[id_agent],
-                                                     consumer_in, consumer_out)))
+                                                     consumer)))
     for id_agent in range(NUM_AGENTS):
         agents[id_agent].start()
 
     # Training done
     coordinator.join()
-    #consumer.close()
+    consumer.close()
     # producer.close()
     print("------------TRAINING DONE-----------------")
 
