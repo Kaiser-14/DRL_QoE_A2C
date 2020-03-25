@@ -18,6 +18,7 @@ from time import sleep
 from json import dumps
 from pymongo import MongoClient
 from json import loads
+from scipy.spatial import distance
 
 # TODO: Check CUDA
 # os.environ['CUDA_VISIBLE_DEVICES']=''
@@ -244,27 +245,24 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
             # resolution_out = list(PROFILES[1].keys())[0]  # Resolution
 
-            if mos_out > 4.3: mos_points = 10
-            if mos_out < 1.5: mos_points = -10
-            if mos_out < 4.3 or mos_out > 3.7: mos_points = 5
-            if mos_out < 3.7 or mos_out > 3.2: mos_points = 0
-            if mos_out > 1.5 or mos_out < 3.2: mos_points = -5
-
-            # TODO: create correctly reward function after Kafka
-            # reward = alpha*pMOS - beta*usage_CPU - gamma*(bitrate_in/bitrate_out)
-
-            # Range between 73.69 and 19.10. The main important reward
+            # Main reward, based on MOS
+            # Range between 72.05 and 19.10.
             # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
-            rew_mos = math.exp(4) - math.exp(5-mos_out)
+            rew_mos = math.exp(4.3) - math.exp(5-mos_out)
 
-            # Range between 15 and 0. If received same bitrate, 0 penalty, 15 if losses
-            # Possible values of bitrate x (ln(x)=): 50M=17.72; 15M=16.52; 2.5M=14.73 // 50K=10.2; 15K=9.61; 2.5K=7.82
-            rew_br = 2*ln(MAX_CAPACITY) -
+            # Penalization based on received bitrate by probe
+            # Range between -12 and -1.
+            # https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
+            rew_br = -math.exp(3*distance.canberra(bitrate_in, bitrate_out))
 
-            # Range between 5 and 0. Cube root
-            # rew_prof = 2*math.pow(np.abs(action - last_action),1/3)
-            # rew_prof = 15* (math.log10(bitrate_out / bitrate_in))
+            # Penalization when changing abruptly between profiles
+            # Range between -20.58 and 0.0.
+            rew_prof = np.where(distance.canberra(action, last_action) != 0,
+                             (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
             #reward = 10 + alpha*mos_points - beta*(bitrate_out / bitrate_in) - gamma*(encoding_quality / 69)
+
+            # https://en.wikipedia.org/wiki/Test_functions_for_optimization
+            #TODO: Think to add encoding quality / 69
             reward = rew_mos + rew_br + rew_prof
             rewards_matrix.append(reward)
 
