@@ -13,26 +13,16 @@ import tensorflow as tf
 import requests
 import math
 
-from kafka import KafkaProducer, KafkaConsumer, TopicPartition
-from time import sleep
-from json import dumps
-from pymongo import MongoClient
+from kafka import KafkaConsumer
 from json import loads
 from scipy.spatial import distance
-
-# TODO: Check CUDA
-# os.environ['CUDA_VISIBLE_DEVICES']=''
-# from tensorflow.python.client import device_lib
-# print(device_lib.list_local_devices())
-
 
 NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
 random_seed = 42
 
-# TODO: Tune parameters
-NUM_STATES = 3  # Number of possible states, e.g., bitrate
-LEN_STATES = 8  # Number of frames in the past
+NUM_STATES = 5  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
+LEN_STATES = 8  # Number of states to hold
 TRAINING_REPORT = 100  # Batch to write information into the logs
 
 # Different profiles combining resolutions and bitrate
@@ -42,7 +32,7 @@ RESOLUTIONS = {1080: 1, 720: 0}
 
 DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
 MAX_BITRATE = max(list(x.values())[0] for x in list(PROFILES.values()))
-MAX_CAPACITY = 20000000.0  # 20MB
+MAX_CAPACITY = 20000.0  # in kb -> 20Mb
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -59,23 +49,16 @@ MODEL_DIR = './results/model/'
 # Kafka parameters
 KAFKA_TOPIC_IN = 'tfm.probe.in'
 KAFKA_TOPIC_OUT = 'tfm.probe.out'
-# KAFKA_SERVER = ['217.172.11.173:9092']
 KAFKA_SERVER = ['192.168.0.55:9092']
 
 # Docker ports
-VCE_RES_PORT = '3007'
+VCE_RES_PORT = '3001'
 VCE_BR_PORT = '3000'
+PROBE_PORT = '3005'
 
 # Other parameters
-# TODO: Tune parameters
 RAND_ACTION = 1000  # Random value to decide exploratory action
-alpha = 1.0  # Reward tuning: pMOS
-beta = 0.5  # Reward tuning: Usage CPU
-gamma = 0.8  # Reward tuning: Bitrate
-
-# Predefined parameters
 CLEAN = 0  # Change to 1 to delete the results folder and start a fresh modelling
-# TODO: Check correct restoring of pretrained model
 A2C_MODEL = None  # Start a fresh model
 # A2C_MODEL = tf.train.latest_checkpoint(MODEL_DIR)  # Load latest trained model
 
@@ -84,9 +67,6 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
     # Include logging information about system behaviour
     logging.basicConfig(filename=LOGS_DIR + 'log_supervisor', filemode='w', level=logging.INFO)
 
-    # FIXME: Insert the code to check GPU device working.
-    # with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess, open(LOGS_DIR + '_test', 'w')
-    # as log_test_file:
     with tf.Session() as sess:
         actor_net = actor.Actor(sess, states_dim=[NUM_STATES, LEN_STATES], actions_dim=NUM_ACTION,
                                 learning_rate=ACTOR_LR)
@@ -199,71 +179,66 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
         rewards_matrix = []
         entropy_matrix = []
 
-        #timestamp = 0
-        #time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
-
         while True:
 
-            counter = 0
-            while True:
-                # resolution_in, frame_rate_in, bitrate_in, duration_in, mos_in = consume_kafka(consumer_in)
-                resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
-                # {"status": true,
-                #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
-                #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
-                #            "pid": {"name": "PID", "value": 1100}, "pid_cpu": {"name": "CPU Usage [%]", "value": 58.3},
-                #            "pid_ram": {"name": "RAM Usage [byte]", "value": 144613376},
-                #            "gop_size": {"name": "GoP Size", "value": 25}, "num_fps": {"name": "Fps", "value": 26},
-                #            "num_frame": {"name": "Frame", "value": 1276},
-                #            "enc_quality": {"name": "Quality [0-69]", "value": 22},
-                #            "enc_dbl_time": {"name": "Encoding Time [s]", "value": 54.08},
-                #            "enc_str_time": {"name": "Encoding Time [h:m:s:ms]", "value": "00:00:54.29"},
-                #            "max_bitrate": {"name": "Maximum Bitrate [kbps]", "value": 3000},
-                #            "avg_bitrate": {"name": "Average Bitrate [kbps]", "value": 2850.4},
-                #            "act_bitrate": {"name": "Actual Bitrate [kbps]", "value": 3159.4},
-                #            "enc_speed": {"name": "Encoding Speed [x]", "value": 1.12}}}
+            # counter = 0
+            # while True:
+            resp_get_vce_res = requests.get('http://localhost:' + VCE_BR_PORT).json()
+            resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
+            #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
+            #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
+            #            "pid": {"name": "PID", "value": 1100}, "pid_cpu": {"name": "CPU Usage [%]", "value": 58.3},
+            #            "pid_ram": {"name": "RAM Usage [byte]", "value": 144613376},
+            #            "gop_size": {"name": "GoP Size", "value": 25}, "num_fps": {"name": "Fps", "value": 26},
+            #            "num_frame": {"name": "Frame", "value": 1276},
+            #            "enc_quality": {"name": "Quality [0-69]", "value": 22},
+            #            "enc_dbl_time": {"name": "Encoding Time [s]", "value": 54.08},
+            #            "enc_str_time": {"name": "Encoding Time [h:m:s:ms]", "value": "00:00:54.29"},
+            #            "max_bitrate": {"name": "Maximum Bitrate [kbps]", "value": 3000},
+            #            "avg_bitrate": {"name": "Average Bitrate [kbps]", "value": 2850.4},
+            #            "act_bitrate": {"name": "Actual Bitrate [kbps]", "value": 3159.4},
+            #            "enc_speed": {"name": "Encoding Speed [x]", "value": 1.12}}}
 
-                bitrate_in = resp_get_vce_br['stats']['act_bitrate']['value']
-                # ram_in = resp_get_vce_br['stats']['pid_ram']['value']
-                encoding_quality = resp_get_vce_br['stats']['enc_quality']['value']
-                # resolution_in = resp_get_vco_br['stats']['act_bitrate']  # Remove it
-                resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
+            timestamp = resp_get_vce_res['stats']['time']
+            bitrate_in = resp_get_vce_br['stats']['act_bitrate']['value']
+            max_bitrate = resp_get_vce_br['stats']['max_bitrate']['value']
+            ram_in = resp_get_vce_br['stats']['pid_ram']['value']
+            encoding_quality = resp_get_vce_br['stats']['enc_quality']['value']
 
-                profile_in = assign_profile(resolution, bitrate_in)
+            resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
 
-                if profile_in == last_action and counter == 5:  # TODO: Check behaviour
-                    break
-                else:
-                    counter += 1
-                    print('Waiting new measurements...')
-                    sleep(1)
+            # profile_in = assign_profile(resolution, bitrate_in)
 
-            # if counter == 5: break  # TODO: Check if it breakes the whole program
+            # if profile_in == last_action and counter == 5:  # TODO: Check behaviour
+            #     break
+            # else:
+            #     counter += 1
+            #     print('Waiting new measurements...')
+            #     sleep(1)
 
-            #bitrate_in = list(PROFILES[action].values())[0]  # Received from entry
-            #bitrate_out = list(PROFILES[action].values())[0]  # Predicted bitrate
-
-            # resolution_out = list(PROFILES[1].keys())[0]  # Resolution
+            # if counter == 5: break  # TODO: Check if it breaks the whole program
 
             # Main reward, based on MOS
             # Range between 72.05 and 19.10.
             # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
             rew_mos = math.exp(4.3) - math.exp(5-mos_out)
 
-            # Penalization based on received bitrate by probe
+            # Penalization based on losses received by probe in terms of bitrate
             # Range between -12 and -1.
             # https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
             rew_br = -math.exp(3*distance.canberra(bitrate_in, bitrate_out))
 
             # Penalization when changing abruptly between profiles
             # Range between -20.58 and 0.0.
-            rew_prof = np.where(distance.canberra(action, last_action) != 0,
-                             (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
-            #reward = 10 + alpha*mos_points - beta*(bitrate_out / bitrate_in) - gamma*(encoding_quality / 69)
+            rew_smooth = np.where(distance.canberra(action, last_action) != 0,
+                                  (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
+
+            # Reward higher profiles
+            # Range between 22 and 0
+            rew_profile = 2*(12 - action)
 
             # https://en.wikipedia.org/wiki/Test_functions_for_optimization
-            #TODO: Think to add encoding quality / 69
-            reward = rew_mos + rew_br + rew_prof
+            reward = rew_mos + rew_br + rew_smooth + rew_profile
             rewards_matrix.append(reward)
 
             last_action = action
@@ -275,11 +250,12 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
-            # FIXME: Control states based on information received by server (cpu_usage, memory, cpu_number, blockiness, blur, blockloss)
-            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality
-            curr_state[1, -1] = 1 / MAX_CAPACITY  # Available capacity: limited to 50Mbps #TODO: Define it
-            curr_state[2, -1] = RESOLUTIONS[resolution_out]  # Resolution: 1080 or 720
-            #curr_state[3, -1] = cpu_usage;
+            # Model states
+            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality of the streaming
+            curr_state[1, -1] = (max_bitrate - bitrate_out) / MAX_CAPACITY  # Loss rate
+            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 or 720
+            curr_state[3, -1] = encoding_quality / 69  # Streaming encoding quality [0, 69]
+            curr_state[4, -1] = ram_in / 1  # TODO: Check max ram
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
@@ -290,51 +266,46 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
-
-            # profile_in = assign_profile(resolution, bitrate_rx)
-            br_predicted = list(PROFILES[profile_in].values())[0]
-            res_predicted = list(PROFILES[profile_in].keys())[0]
+            br_predicted = list(PROFILES[action].values())[0]
+            res_predicted = list(PROFILES[action].keys())[0]
 
             if res_predicted == '1080':
                 res_out = 'high'
             else:
                 res_out = 'low'
-            # res_out = 'high' if res_predicted == '1080' else res_out = 'low'
 
-            # Resolution
-            # curl -XPOST http://ip:3000/bitrate/150000
-            # {"status":true}
+            # Send request to change resolution
             resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
             if resp_post_vco_res.status_code == 200:  # if response:
                 print('Report to the vCE_resolution success')
             elif resp_post_vco_res.status_code == 404:  # else:
                 print('Report to the vCE_resolution success not found')
 
-            # Bitrate
-            # {"status":true}
+            # Send request to change bitrate
             resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + br_predicted)
             if resp_post_vco_br.status_code == 200:  # if response:
                 print('Report to the vCE_bitrate success')
             elif resp_post_vco_res.status_code == 404:  # else:
                 print('Report to the vCE_bitrate success not found')
 
+            if RESOLUTIONS[res_predicted] != RESOLUTIONS[resolution]:
+                requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
+                requests.get('http://localhost:' + PROBE_PORT + '/refresh/')
+
             # To receive status from the vco-resolution
-            resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
+            # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
-            # FIXME: Adapt timer to the behaviour of the system
-            #time.sleep(1)
+            time.sleep(1)
 
-            # TODO: Add more information to the logs
-            # log_file.write(str(timestamp) + '\t' +
-            #                str(reward) + '\t' +
-            #                str(bitrate_tx) + '\t' +
-            #                str(bitrate_rx) + '\t' +
-            #                str(resolution) + '\t' +
-            #                str(pMOS) +
-            #                '\n'
-            #                )
-            log_file.write(str(resolution_in) +
+            log_file.write(str(timestamp) + '\t' +
+                           str(reward) + '\t' +
+                           str(max_bitrate) + '\t' +
+                           str(bitrate_in) + '\t' +
+                           str(bitrate_out) + '\t' +
+                           str(resolution) + '\t' +
+                           str(mos_out) + '\t' +
+                           str(action) +
                            '\n'
                            )
 
@@ -389,16 +360,7 @@ def main():
         net_params_queues.append(mp.Queue(1))
         exp_queues.append(mp.Queue(1))
 
-    # Kafka
-    # https://towardsdatascience.com/kafka-python-explained-in-10-lines-of-code-800e3e07dad1
-    # TODO: Tune parameters
-    # consumer_in = KafkaConsumer(
-    #     KAFKA_TOPIC_IN,
-    #     bootstrap_servers=KAFKA_SERVER,
-    #     auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest' // latest
-    #     enable_auto_commit=True,
-    #     value_deserializer=lambda x: loads(x.decode('utf-8')))
-
+    # Kafka consumer to get data sent from probe
     consumer = KafkaConsumer(
         KAFKA_TOPIC_OUT,
         bootstrap_servers=KAFKA_SERVER,
@@ -407,26 +369,7 @@ def main():
         group_id='probe_out',
         value_deserializer=lambda x: loads(x.decode('utf-8')))
 
-    # producer = KafkaProducer(bootstrap_servers=['localhost:9092'],
-    #                          value_serializer=lambda x:
-    #                          dumps(x).encode('utf-8'))
-
-    # Get last message to initialize parameters
-    # try:
-    #     with open('kafka_metrics.log', 'r') as kafka_log:
-    #         for line in kafka_log:
-    #             values = line.split()  # Possible values: timestamp, bitrate sent and received, resolution, block_loss
-    #             a = values[0]
-    #             b = values[1]
-
-    # except Exception as ex:
-    #     kafka_log = open('kafka_metrics.log', 'w')
-    #     kafka_log.close()
-
-
-
-    # Create a coordinator and multiple agent processes
-    # (note: threading is not desirable due to python GIL)
+    # Create a coordinator and multiple agent processes. This projects aims to train only one agent
     coordinator = mp.Process(target=sup_agent, args=(net_params_queues, exp_queues))
     coordinator.start()
 
@@ -440,7 +383,6 @@ def main():
     # Training done
     coordinator.join()
     consumer.close()
-    # producer.close()
     print("------------TRAINING DONE-----------------")
 
 

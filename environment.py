@@ -68,56 +68,15 @@ def compute_entropy(info):
 # TODO: Check good behaviour, based on result
 def consume_kafka(consumer):
 
-    # To check correct model working
-    # with open('example.json', 'r') as file:
-    #     data = json.load(file)
-    #
-    #     timestamp = data['Time_stamp']
-    #     bitrate_tx = data['videoSettings']['bitrate']
-    #     bitrate_rx = 1032.52
-    #     resolution = data['videoSettings']['height']
-    #     pMOS = data['Predictions']['mos']
-    #
-    #     result = 1
-
-    # message = consumer.poll()
-
-    #TODO: Correct
     for message in consumer:
-        # message.poll()
-        # content = json.loads(message.value.decode('utf-8', 'ignore'))
-        # print('Message before: {}'.format(message))
         content = message.value
-        # content = message.value.decode('utf-8', 'ignore')
-        # print('Message after: {}'.format(content))
-        # message = json.loads(message.value.decode())
+
         resolution = content['value']['resolution']
         frame_rate = content['value']['frame_rate']
         bitrate = content['value']['bitrate']
         duration = content['value']['duration']
         mos = content['value']['mos']
         break
-        # print('Res2: {}'.format(resolution))
-        # print('Bitrate: {}'.format(bitrate))
-        # print('frame_rate: {}'.format(frame_rate))
-        # print('duration: {}'.format(duration))
-        # print('mos: {}'.format(mos))
-        # collection.insert_one(message)
-        # print('{} added to {}'.format(message, collection))
-
-        # result = 1  # TODO: Assign based on parameters
-
-        # for line in kafka_log:
-        #     values = line.split()
-        #
-        #     timestamp = values[0]
-        #     bitrate_tx = values[0]
-        #     bitrate_rx = values[1]
-        #     resolution = values[3]
-        #     pMOS = values[4]
-        #     result = 1
-
-            # TODO: Link capacity, CPU_Usage
 
     return resolution, frame_rate, bitrate, duration, mos
 
