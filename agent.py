@@ -16,6 +16,7 @@ import math
 from kafka import KafkaConsumer
 from json import loads
 from scipy.spatial import distance
+from random import randint
 
 NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
@@ -31,7 +32,7 @@ PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080
 RESOLUTIONS = {1080: 1, 720: 0}
 
 DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
-MAX_BITRATE = max(list(x.values())[0] for x in list(PROFILES.values()))
+MAX_BR = max(list(x.values())[0] for x in list(PROFILES.values()))
 MAX_CAPACITY = 20000.0  # in kb -> 20Mb
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
@@ -55,6 +56,7 @@ KAFKA_SERVER = ['192.168.0.55:9092']
 VCE_RES_PORT = '3001'
 VCE_BR_PORT = '3000'
 PROBE_PORT = '3005'
+TB_PORT = '3002'
 
 # Other parameters
 RAND_ACTION = 1000  # Random value to decide exploratory action
@@ -179,6 +181,10 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
         rewards_matrix = []
         entropy_matrix = []
 
+        # Pointer to change randomly the background traffic injected to the link
+        tb_counter = 0
+        br_background = 3000.0  # Start low background traffic
+
         while True:
 
             # counter = 0
@@ -226,7 +232,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Penalization based on losses received by probe in terms of bitrate
             # Range between -12 and -1.
             # https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
-            rew_br = -math.exp(3*distance.canberra(bitrate_in, bitrate_out))
+            rew_br = -math.exp(3*distance.canberra(bitrate_in/1000, bitrate_out/1000))
 
             # Penalization when changing abruptly between profiles
             # Range between -20.58 and 0.0.
@@ -251,11 +257,11 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
             # Model states
-            curr_state[0, -1] = bitrate_out / MAX_BITRATE  # Quality of the streaming
+            curr_state[0, -1] = bitrate_out / MAX_BR  # Quality of the streaming
             curr_state[1, -1] = (max_bitrate - bitrate_out) / MAX_CAPACITY  # Loss rate
-            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 or 720
+            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 (1) or 720 (0)
             curr_state[3, -1] = encoding_quality / 69  # Streaming encoding quality [0, 69]
-            curr_state[4, -1] = ram_in / 1  # TODO: Check max ram
+            curr_state[4, -1] = ram_in / 5000.0  # Ram_usage. Adapt based on computer
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
@@ -291,10 +297,18 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             if RESOLUTIONS[res_predicted] != RESOLUTIONS[resolution]:
                 requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
                 requests.get('http://localhost:' + PROBE_PORT + '/refresh/')
+                time.sleep(10)
 
             # To receive status from the vco-resolution
             # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
+
+            if tb_counter == 5:
+                br_background = randint(0, MAX_CAPACITY)  # Generate randomly the traffic background
+                requests.post('http://localhost:' + TB_PORT + '/bitrate/' + br_background*1000)
+                tb_counter = 0
+
+            tb_counter += 1
 
             time.sleep(1)
 
@@ -305,6 +319,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                            str(bitrate_out) + '\t' +
                            str(resolution) + '\t' +
                            str(mos_out) + '\t' +
+                           str(br_background*1000) + '\t' +
                            str(action) +
                            '\n'
                            )
