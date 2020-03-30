@@ -28,9 +28,9 @@ python3.6 -V -> Python3.69rc1 [/usr/bin/local/python3.6]
 ```
 
 * Install pip if not installed in your machine.
-'''
+```
 sudo apt install pip3
-'''
+```
 
 * Install Python virtual environment
 ```
@@ -169,22 +169,23 @@ git clone
 ```
 
 2. Inside the folder, create the docker image
-'''
+```
 sudo docker build -t vcompression-res .
-'''
+```
 
 3. Create a container based on the previous image. Note: use a free port on your machine.
-'''
+```
 sudo docker run --name vcompression-res -p 3001:3001 -d vco-res
+```
 
 4. For the next steps you will need some information from the docker containers. Enter into the container and modify some parameters.
-'''
+```
 sudo docker ps -a
 sudo docker exec -it vco-res /bin/bash
 sudo apt update
 sudo apt install nano -y
 nano index.js
-'''
+```
 
 * KAFKA_IDENTIFIER. In order to avoid problems with local machine permissions, from a terminal outside the container run the next code and find UUID:
 ```
@@ -192,9 +193,9 @@ nano /usr/sbin/dmidecode
 ```
 
 * For the next steps you will need some information from the docker containers. You can run the next code to check it in your local machine.
-'''
+```
 sudo docker ps -a
-'''
+```
 
 * API_PORT. Use the port used in the creation of the vco-res container. To check it use docker container information command and find it based on the actual name of the container. Note: If you have followed this instructions, you have to set it as API_PORT = 3001.
 
@@ -237,26 +238,26 @@ systemctl status vcompression.service
 ##### vCompression Bitrate
 
 1. Clone repository vcompression bitrate (Master branch -> bitrate).
-'''
+```
 A
-'''
+```
 
 2. Inside the folder, create the docker image
-'''
+```
 sudo docker build -t vcompression-br .
-'''
+```
 
 3. Create a container based on the previous image. Note: use a free port on your machine.
-'''
+```
 sudo docker run --name vcompression-br -p 3000:3000 -d vco-br
-'''
+```
 
 4. For the next steps you will need some information from the docker containers. Enter into the container and modify some parameters.
-'''
+```
 sudo docker ps -a
 sudo docker exec -it vco-br /bin/bash
 nano index.js
-'''
+```
 
 * KAFKA_IDENTIFIER. In order to avoid problems with local machine permissions, from a terminal outside the container run the next code and find UUID:
 ```
@@ -277,21 +278,21 @@ const FFMPEG_OUTPUTS = 'udp://192.168.0.55';
 The goal of the project is to simulate a real environment, so it is generated some noise with a traffic background simulating the behaviour of other consumers retrieving content from the network. You can use other tool, but this project use the vCE focused on bitrate due to the ability to modify the maximum bitrate on demand.
 
 1. Using the same vcompression-resolution image as created before, create a new container with a free port on your machine.
-'''
+```
 sudo docker run --name traffic_bg -p 3002:3002 -d vcompression-br
-'''
+```
 
 2. In the same way as the vcompression-bitrate, modify specific parameters.
 
 * Enter into the container.
-'''
+```
 sudo docker exec -it traffic_bg /bin/bash
-'''
+```
 
 * Modify parameters in index.js.
-'''
+```
 nano index.js
-'''
+```
 
 * API_PORT = 3002 (or the port that you set)
 * const FFMPEG_INPUT = 'udp://224.0.1.4:5678'; (IP address of any UDP streaming or local file with enough bitrate (mainly RAW content))
@@ -322,15 +323,15 @@ nano /home/test.js
 * IP:PORT = 'localhost:9092' (or address where the Kafka server is located)
 
 2. Move to the working directory and install some components.
-'''
+```
 cd var/www/html/proyectos/videoqualityprobe/Release/
-'''
+```
 
 3. Create a JSON with all the dependencies for NPM.
 * First create the file.
-'''
+```
 nano package.json
-'''
+```
 
 * Include the following text.
 ```json
@@ -374,15 +375,15 @@ nano package.json
 ```
 
 4. Install node.js.
-'''
+```
 npm install
-'''
+```
 
 5. Create the index.js which will control the behaviour of the probe.
 * First create the file.
-'''
+```
 nano index.js
-'''
+```
 
 * Include the following text.
 ```javascript
@@ -465,58 +466,58 @@ X. Enable vcompression focused on handling resolution.
 ```
 sudo docker exec -it vco-res /bin/bash/
 node index.js
-'''
+```
 
 * If the ffmpeg process are continuosly closing, restart the container.
-'''
+```
 exit (inside the container)
 sudo docker restart vco-res (in the same terminal after exit the container)
 sudo docker exec -it vco-res /bin/bash/
-'''
+```
 
 * vcompression-res has some APIs to interact via terminal. Note: use the same port that you set in the creation of the container
-'''
+```
 curl -X GET http://localhost:3000/ (to receive actual information of the streaming process)
 curl -X POST http://localhost:3000/resolution/high (to modify the resolution: 1080p)
 curl -X POST http://localhost:3000/resolution/low (to modify the resolution: 720p)
-'''
+```
 
 X. Enable vcompression focused on handling bitrate.
 ```
 sudo docker exec -it vco-br /bin/bash/
 node index.js
-'''
+```
 
 * If the ffmpeg process are continuosly closing, restart the container.
-'''
+```
 exit (inside the container)
 sudo docker restart vco-br (in the same terminal after exit the container)
 sudo docker exec -it vco-br /bin/bash/
 node index.js
-'''
+```
 
 * vcompression-br has some APIs to interact via terminal. Note: use the same port that you set in the creation of the container
-'''
+```
 curl -X GET http://localhost:3001/ (to receive actual information of the streaming process)
 curl -X POST http://localhost:3001/bitrate/10000 (to modify the maximum bitrate)
 curl -X POST http://localhost:3001/refresh/ (refresh the internal FFmpeg)
-'''
+```
 
 X. Enable Traffic Background
-'''
+```
 sudo docker exec -it traffic_bg /bin/bash
-'''
+```
 * run the process.
-'''
+```
 sudo docker exec -it traffic-bg /bin/bash
 node index.js
-'''
+```
 
 * traffic-bg has the same APIs as the vco-br except the refresh API.
-'''
+```
 curl -X GET http://localhost:3002/ (to receive actual information of the streaming process)
 curl -X POST http://localhost:3002/bitrate/10000 (to modify the maximum bitrate)
-'''
+```
 
 X. Enable probe
 ```
