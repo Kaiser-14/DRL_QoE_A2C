@@ -24,16 +24,18 @@ random_seed = 42
 
 NUM_STATES = 5  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
 LEN_STATES = 8  # Number of states to hold
-TRAINING_REPORT = 100  # Batch to write information into the logs
+TRAINING_REPORT = 10  # Batch to write information into the logs
 
 # Different profiles combining resolutions and bitrate
-PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
-            8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
+# PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
+#             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
+PROFILES = {0: {1080: 10}, 1: {1080: 6}, 2: {1080: 4}, 3: {720: 4}, 4: {720: 2}, 5: {720: 0.5}}
 RESOLUTIONS = {1080: 1, 720: 0}
 
-DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
+# DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
+DEFAULT_ACTION = 1  # PROFILES[0][1] 1080p 6Mbps
 MAX_BR = max(list(x.values())[0] for x in list(PROFILES.values()))
-MAX_CAPACITY = 20000.0  # in kb -> 20Mb
+MAX_CAPACITY = 15000.0  # in kb -> 20Mb
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -53,9 +55,9 @@ KAFKA_TOPIC_OUT = 'tfm.probe.out'
 KAFKA_SERVER = ['192.168.0.55:9092']
 
 # Docker ports
-VCE_RES_PORT = '3001'
+VCE_RES_PORT = '3003'
 VCE_BR_PORT = '3000'
-PROBE_PORT = '3005'
+PROBE_PORT = '3006'
 TB_PORT = '3002'
 
 # Other parameters
@@ -183,13 +185,18 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
         # Pointer to change randomly the background traffic injected to the link
         tb_counter = 0
-        br_background = 3000.0  # Start low background traffic
+        br_background = 3.0  # Initialize background traffic
 
         while True:
 
             # counter = 0
             # while True:
-            resp_get_vce_res = requests.get('http://localhost:' + VCE_BR_PORT).json()
+
+            print('Consuming data from Kafka...')
+            resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
+            print('Probe bitrate: {}'.format(bitrate_out))
+
+            resp_get_vce_res = requests.get('http://localhost:' + VCE_RES_PORT).json()
             resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
             #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
             #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
@@ -211,8 +218,6 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             ram_in = resp_get_vce_br['stats']['pid_ram']['value']
             encoding_quality = resp_get_vce_br['stats']['enc_quality']['value']
 
-            resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
-
             # profile_in = assign_profile(resolution, bitrate_in)
 
             # if profile_in == last_action and counter == 5:  # TODO: Check behaviour
@@ -227,24 +232,31 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Main reward, based on MOS
             # Range between 72.05 and 19.10.
             # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
-            rew_mos = math.exp(4.3) - math.exp(5-mos_out)
+            rew_mos = math.exp(4.3) - math.exp(5-float(mos_out))
 
             # Penalization based on losses received by probe in terms of bitrate
             # Range between -12 and -1.
             # https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
-            rew_br = -math.exp(3*distance.canberra(bitrate_in/1000, bitrate_out/1000))
+            # rew_br = -math.exp(3*distance.canberra(bitrate_in/1000, bitrate_out/1000))
+            # New range between -44 and -12 (-1 if same bitrate).
+            rew_br = -math.exp(2 * (1 + distance.canberra(float(bitrate_in) / 1000, float(bitrate_out) / 1000)))
 
             # Penalization when changing abruptly between profiles
-            # Range between -20.58 and 0.0.
-            rew_smooth = np.where(distance.canberra(action, last_action) != 0,
-                                  (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
+            # Range between -20.58 and 0.0. New range between -13.7 and 0.
+            # rew_smooth = np.where(distance.canberra(action, last_action) != 0,
+            #                       (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
+            rew_smooth = 12 * np.log(1 - distance.canberra(action + 1, last_action + 1))
 
             # Reward higher profiles
-            # Range between 22 and 0
+            # Range between 22 and 11
             rew_profile = 2*(12 - action)
 
             # https://en.wikipedia.org/wiki/Test_functions_for_optimization
             reward = rew_mos + rew_br + rew_smooth + rew_profile
+            print('Rew_mos: {}'.format(rew_mos))
+            print('rew_br: {}'.format(rew_br))
+            print('rew_smooth: {}'.format(rew_smooth))
+            print('rew_profile: {}'.format(rew_profile))
             rewards_matrix.append(reward)
 
             last_action = action
@@ -257,25 +269,25 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             curr_state = np.roll(curr_state, -1, axis=1)  # Keep last 8 states, moving the first one to the end
 
             # Model states
-            curr_state[0, -1] = bitrate_out / MAX_BR  # Quality of the streaming
-            curr_state[1, -1] = (max_bitrate - bitrate_out) / MAX_CAPACITY  # Loss rate
-            curr_state[2, -1] = RESOLUTIONS[resolution]  # Resolution: 1080 (1) or 720 (0)
-            curr_state[3, -1] = encoding_quality / 69  # Streaming encoding quality [0, 69]
-            curr_state[4, -1] = ram_in / 5000.0  # Ram_usage. Adapt based on computer
+            curr_state[0, -1] = float(bitrate_out) / MAX_BR  # Quality of the streaming
+            curr_state[1, -1] = (float(max_bitrate) - float(bitrate_out)) / MAX_CAPACITY  # Loss rate
+            curr_state[2, -1] = RESOLUTIONS[int(resolution)]  # Resolution: 1080 (1) or 720 (0)
+            curr_state[3, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
+            curr_state[4, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
             predictions_cumsum = np.cumsum(predictions)
             # print('\nAction cumsum: ', predictions_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
-            # print('Last action: {0}. New action: {1}.'.format(last_action, action))
+            print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
             br_predicted = list(PROFILES[action].values())[0]
             res_predicted = list(PROFILES[action].keys())[0]
 
-            if res_predicted == '1080':
+            if res_predicted == 1080:
                 res_out = 'high'
             else:
                 res_out = 'low'
@@ -285,31 +297,41 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             if resp_post_vco_res.status_code == 200:  # if response:
                 print('Report to the vCE_resolution success')
             elif resp_post_vco_res.status_code == 404:  # else:
-                print('Report to the vCE_resolution success not found')
+                print('Report to the vCE_resolution not found')
+
+            print('Previous Profile-> Bitrate: {}. Resolution: {}'.format(list(PROFILES[last_action].values())[0],
+                                                                          list(PROFILES[last_action].keys())[0]))
+            print('Predicted Profile-> Bitrate: {}. Resolution: {}'.format(br_predicted, res_predicted))
+
+            if RESOLUTIONS[res_predicted] != RESOLUTIONS[int(resolution)]:
+                print('Changing resolution...')
+                requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
+                requests.get('http://192.168.0.26:' + PROBE_PORT + '/refresh/')
+                time.sleep(10)
 
             # Send request to change bitrate
-            resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + br_predicted)
+            resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + str(br_predicted*1000))
             if resp_post_vco_br.status_code == 200:  # if response:
                 print('Report to the vCE_bitrate success')
             elif resp_post_vco_res.status_code == 404:  # else:
-                print('Report to the vCE_bitrate success not found')
+                print('Report to the vCE_bitrate not found')
 
-            if RESOLUTIONS[res_predicted] != RESOLUTIONS[resolution]:
-                requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
-                requests.get('http://localhost:' + PROBE_PORT + '/refresh/')
-                time.sleep(10)
+            print(int(resolution))
+            print('Resolution actual: {}'.format(int(resolution)))
+            print('Resolution predicted: {}'.format(res_predicted))
 
             # To receive status from the vco-resolution
             # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
             if tb_counter == 5:
-                br_background = randint(0, MAX_CAPACITY)  # Generate randomly the traffic background
-                requests.post('http://localhost:' + TB_PORT + '/bitrate/' + br_background*1000)
+                br_background = randint(0, MAX_CAPACITY/1000)  # Generate randomly the traffic background
+                requests.post('http://localhost:' + TB_PORT + '/bitrate/' + str(br_background*1000))
                 tb_counter = 0
 
             tb_counter += 1
 
+            print('----------------')
             time.sleep(1)
 
             log_file.write(str(timestamp) + '\t' +
@@ -318,7 +340,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                            str(bitrate_in) + '\t' +
                            str(bitrate_out) + '\t' +
                            str(resolution) + '\t' +
-                           str(mos_out) + '\t' +
+                           str(float(mos_out)) + '\t' +
                            str(br_background*1000) + '\t' +
                            str(action) +
                            '\n'
@@ -341,6 +363,8 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                 del entropy_matrix[:]
 
                 log_file.write('\n')
+
+                requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
 
             states_matrix.append(curr_state)
 
@@ -381,7 +405,6 @@ def main():
         bootstrap_servers=KAFKA_SERVER,
         auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
         enable_auto_commit=True,
-        group_id='probe_out',
         value_deserializer=lambda x: loads(x.decode('utf-8')))
 
     # Create a coordinator and multiple agent processes. This projects aims to train only one agent
