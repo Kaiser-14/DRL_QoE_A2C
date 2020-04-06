@@ -1,4 +1,4 @@
-WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:85: The name tf.Session is deprecated. Please use tf.compat.v1.Session instead.
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:74: The name tf.Session is deprecated. Please use tf.compat.v1.Session instead.
 
 WARNING:tensorflow:From /home/arp/.local/lib/python3.6/site-packages/tflearn/initializations.py:174: calling TruncatedNormal.__init__ (from tensorflow.python.ops.init_ops) with dtype is deprecated and will be removed in a future version.
 Instructions for updating:
@@ -28,6 +28,69 @@ Type is unsupported, or the types of the items don't match field type in Collect
 WARNING:tensorflow:Issue encountered when serializing data_augmentation.
 Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
 'NoneType' object has no attribute 'name'
-WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:95: The name tf.train.Saver is deprecated. Please use tf.compat.v1.train.Saver instead.
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:84: The name tf.train.Saver is deprecated. Please use tf.compat.v1.train.Saver instead.
 
-INFO:root:Epoch: 1 TD_Loss: 8.110613720392356 Average_Reward: 22.114874486918154 Average_Entropy: 2.509950244065487
+INFO:root:Epoch: 1 TD_Loss: 200.8048516177259 Average_Reward: 549.5716146439268 Average_Entropy: 1.7905169665813445
+INFO:root:Epoch: 2 TD_Loss: 183.16113416545667 Average_Reward: 440.2558699632286 Average_Entropy: 1.7881714940071105
+INFO:root:Epoch: 3 TD_Loss: 273.85855459446566 Average_Reward: 661.8076142657635 Average_Entropy: 1.7892164677381515
+INFO:root:Epoch: 4 TD_Loss: 283.8655432156612 Average_Reward: 587.8810299728833 Average_Entropy: 1.790086680650711
+INFO:root:Epoch: 5 TD_Loss: 268.2124937435257 Average_Reward: 593.6340566998756 Average_Entropy: 1.7893239498138427
+INFO:root:Epoch: 6 TD_Loss: 221.37594293851356 Average_Reward: 507.29274437566664 Average_Entropy: 1.787748283147812
+INFO:root:Epoch: 7 TD_Loss: 215.73072792484578 Average_Reward: 462.0970974191964 Average_Entropy: 1.7898040741682053
+INFO:root:Epoch: 8 TD_Loss: 262.2978245518957 Average_Reward: 625.6495172626128 Average_Entropy: 1.7903351843357087
+INFO:root:Epoch: 9 TD_Loss: 239.16186748721378 Average_Reward: 568.6274416159353 Average_Entropy: 1.7906437039375305
+INFO:root:Epoch: 10 TD_Loss: 259.2432470458958 Average_Reward: 595.5888773439301 Average_Entropy: 1.7901809483766555
+INFO:root:Epoch: 11 TD_Loss: 281.9050389038008 Average_Reward: 714.1576926091977 Average_Entropy: 1.7892732858657836
+INFO:root:Epoch: 12 TD_Loss: 211.81331425771208 Average_Reward: 549.6887953133835 Average_Entropy: 1.7906819015741349
+INFO:root:Epoch: 13 TD_Loss: 148.28314869787738 Average_Reward: 481.85175205487695 Average_Entropy: 1.7905735462903976
+INFO:root:Epoch: 14 TD_Loss: 129.8535324771923 Average_Reward: 452.61694732549904 Average_Entropy: 1.7906314879655838
+INFO:root:Epoch: 15 TD_Loss: 245.71220603941478 Average_Reward: 608.8976443389209 Average_Entropy: 1.7898397952318192
+INFO:root:Epoch: 16 TD_Loss: 142.1117039659437 Average_Reward: 448.82678115807283 Average_Entropy: 1.7894688338041305
+INFO:root:Epoch: 17 TD_Loss: 171.74312875683447 Average_Reward: 408.4468928147495 Average_Entropy: 1.7900814980268478
+INFO:root:Epoch: 18 TD_Loss: 127.08783301425945 Average_Reward: 270.78874263939537 Average_Entropy: 1.7897431671619415
+INFO:root:Epoch: 19 TD_Loss: 214.82179541746433 Average_Reward: 638.7163255224519 Average_Entropy: 1.7888424575328827
+INFO:root:Epoch: 20 TD_Loss: 234.82749681137543 Average_Reward: 582.444886184851 Average_Entropy: 1.7897076725959777
+INFO:root:Epoch: 21 TD_Loss: 212.42008396123725 Average_Reward: 631.7550414327463 Average_Entropy: 1.7893230766057968
+INFO:root:Epoch: 22 TD_Loss: 216.73575309487538 Average_Reward: 637.670740531041 Average_Entropy: 1.7899440586566926
+INFO:root:Epoch: 23 TD_Loss: 225.2525318016232 Average_Reward: 662.590069092693 Average_Entropy: 1.7882647901773452
+INFO:root:Epoch: 24 TD_Loss: 239.2882243146928 Average_Reward: 730.9430961873342 Average_Entropy: 1.7876537591218948
+INFO:root:Epoch: 25 TD_Loss: 199.2048823183865 Average_Reward: 700.1177416780703 Average_Entropy: 1.7887724101543427
+INFO:root:Epoch: 26 TD_Loss: 222.94925876660835 Average_Reward: 720.7809665793102 Average_Entropy: 1.790171319246292
+INFO:root:Epoch: 27 TD_Loss: 221.91025957850866 Average_Reward: 687.7094323431699 Average_Entropy: 1.7902495950460433
+INFO:root:Epoch: 28 TD_Loss: 194.42501233078033 Average_Reward: 690.6397971526583 Average_Entropy: 1.7900880753993988
+INFO:root:Epoch: 29 TD_Loss: 181.55349882540898 Average_Reward: 595.9216434767262 Average_Entropy: 1.7898804813623428
+INFO:root:Epoch: 30 TD_Loss: 192.6692437816744 Average_Reward: 657.8977616052765 Average_Entropy: 1.7902259439229966
+INFO:root:Epoch: 31 TD_Loss: 176.5613580218999 Average_Reward: 644.8545458628334 Average_Entropy: 1.7899413585662842
+INFO:root:Epoch: 32 TD_Loss: 184.4168560461381 Average_Reward: 670.2535390352159 Average_Entropy: 1.7897400587797165
+INFO:root:Epoch: 33 TD_Loss: 85.96526784008452 Average_Reward: 615.6209598211685 Average_Entropy: 1.7884653896093368
+INFO:root:Epoch: 34 TD_Loss: 169.47696264134163 Average_Reward: 659.5123357508119 Average_Entropy: 1.7902261108160018
+INFO:root:Epoch: 35 TD_Loss: 150.6698160555053 Average_Reward: 615.7671009832189 Average_Entropy: 1.7907108336687088
+INFO:root:Epoch: 36 TD_Loss: 163.1897792127948 Average_Reward: 659.5763535814785 Average_Entropy: 1.7904900938272477
+INFO:root:Epoch: 37 TD_Loss: 137.90146021428964 Average_Reward: 656.2963654467778 Average_Entropy: 1.7906281858682633
+INFO:root:Epoch: 38 TD_Loss: 111.03917953221507 Average_Reward: 670.6100205071567 Average_Entropy: 1.7897912174463273
+INFO:root:Epoch: 39 TD_Loss: 64.26938887673529 Average_Reward: 592.5035088659648 Average_Entropy: 1.7892684787511826
+INFO:root:Epoch: 40 TD_Loss: 109.1558970571269 Average_Reward: 630.7160415625207 Average_Entropy: 1.7895495921373368
+INFO:root:Epoch: 41 TD_Loss: 84.27673325092655 Average_Reward: 704.4600979498683 Average_Entropy: 1.7879914969205857
+INFO:root:Epoch: 42 TD_Loss: 116.92921864563873 Average_Reward: 615.8727641981493 Average_Entropy: 1.7900250732898713
+INFO:root:Epoch: 43 TD_Loss: 113.4686490216405 Average_Reward: 661.806526887121 Average_Entropy: 1.7898710429668427
+INFO:root:Epoch: 44 TD_Loss: 85.8385330429538 Average_Reward: 642.9869643748522 Average_Entropy: 1.7896731525659562
+INFO:root:Epoch: 45 TD_Loss: 86.98749144813812 Average_Reward: 667.3192637073553 Average_Entropy: 1.7887204617261887
+INFO:root:Epoch: 46 TD_Loss: 83.09027873345693 Average_Reward: 654.8817820111439 Average_Entropy: 1.7899154484272004
+INFO:root:Epoch: 47 TD_Loss: -9.717188668425877 Average_Reward: 659.1464682908386 Average_Entropy: 1.7831661492586135
+INFO:root:Epoch: 48 TD_Loss: -61.00535314672398 Average_Reward: 638.3153253634714 Average_Entropy: 1.7880739182233811
+INFO:root:Epoch: 49 TD_Loss: -16.72802375752254 Average_Reward: 628.8655484950924 Average_Entropy: 1.788991928100586
+INFO:root:Epoch: 50 TD_Loss: 88.1404714560476 Average_Reward: 656.9857440593803 Average_Entropy: 1.7893765300512314
+INFO:root:Epoch: 51 TD_Loss: 134.28168507746946 Average_Reward: 671.8263303422303 Average_Entropy: 1.7906225860118865
+INFO:root:Epoch: 52 TD_Loss: 110.67690733525642 Average_Reward: 634.0763960164858 Average_Entropy: 1.790667751431465
+INFO:root:Epoch: 53 TD_Loss: 104.34076138258101 Average_Reward: 679.0764710924389 Average_Entropy: 1.790384179353714
+INFO:root:Epoch: 54 TD_Loss: 85.64269593413289 Average_Reward: 652.8467405253587 Average_Entropy: 1.7899881541728973
+INFO:root:Epoch: 55 TD_Loss: 92.51056853700265 Average_Reward: 626.941026450185 Average_Entropy: 1.790166938304901
+INFO:root:Epoch: 56 TD_Loss: 64.40363751296165 Average_Reward: 599.053775445972 Average_Entropy: 1.7899772822856903
+INFO:root:Epoch: 57 TD_Loss: 85.95849283212479 Average_Reward: 615.6729623244365 Average_Entropy: 1.7897506833076477
+INFO:root:Epoch: 58 TD_Loss: 87.77213783308028 Average_Reward: 595.5304431924675 Average_Entropy: 1.7898288786411285
+INFO:root:Epoch: 59 TD_Loss: 71.94015959607394 Average_Reward: 629.2690153860605 Average_Entropy: 1.7901993840932846
+INFO:root:Epoch: 60 TD_Loss: 45.36319816580785 Average_Reward: 573.0863292272545 Average_Entropy: 1.7897684514522552
+INFO:root:Epoch: 61 TD_Loss: 84.62014565004816 Average_Reward: 624.8076253419339 Average_Entropy: 1.7898303627967835
+INFO:root:Epoch: 62 TD_Loss: 87.32820032565992 Average_Reward: 689.551252801851 Average_Entropy: 1.78992560505867
+INFO:root:Epoch: 63 TD_Loss: 52.60812925717946 Average_Reward: 635.1275133454012 Average_Entropy: 1.7897103488445283
+INFO:root:Epoch: 64 TD_Loss: 64.31892971590648 Average_Reward: 645.1876984463909 Average_Entropy: 1.7896148532629013

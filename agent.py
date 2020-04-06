@@ -17,6 +17,7 @@ from kafka import KafkaConsumer
 from json import loads
 from scipy.spatial import distance
 from random import randint
+from datetime import datetime
 
 NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
@@ -35,7 +36,7 @@ RESOLUTIONS = {1080: 1, 720: 0}
 # DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
 DEFAULT_ACTION = 1  # PROFILES[0][1] 1080p 6Mbps
 MAX_BR = max(list(x.values())[0] for x in list(PROFILES.values()))
-MAX_CAPACITY = 15000.0  # in kb -> 20Mb
+MAX_CAPACITY = 15000.0  # in kb -> 15Mb
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -45,12 +46,12 @@ ACTOR_LR = 0.0001
 CRITIC_LR = 0.001
 
 # Files
-SUMMARY_DIR = './results/summary/'
-LOGS_DIR = './results/logs/'
-MODEL_DIR = './results/model/'
+NOW = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
+SUMMARY_DIR = './results/' + NOW + '/'  # './results/summary/'
+LOGS_DIR = './results/' + NOW + '/'  # './results/logs/'
+MODEL_DIR = './results/' + NOW + '/'  # './results/model/'
 
 # Kafka parameters
-KAFKA_TOPIC_IN = 'tfm.probe.in'
 KAFKA_TOPIC_OUT = 'tfm.probe.out'
 KAFKA_SERVER = ['192.168.0.55:9092']
 
@@ -86,8 +87,22 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
         # Restore previously NN trained (set in global parameters)
         model = A2C_MODEL
         if model is not None:
+            # saver = tf.train.import_meta_graph('my-model-1000.meta')
             saver.restore(sess, model)
             print('\nModel restored')
+
+            # https://blog.metaflow.fr/tensorflow-saving-restoring-and-mixing-multiple-models-c4c94d5d7125
+            # # Let's load a previously saved meta graph in the default graph
+            # # This function returns a Saver
+            # saver = tf.train.import_meta_graph('results/model.ckpt-1000.meta')
+            #
+            # # We can now access the default graph where all our metadata has been loaded
+            # graph = tf.get_default_graph()
+            #
+            # # Finally we can retrieve tensors, operations, collections, etc.
+            # global_step_tensor = graph.get_tensor_by_name('loss/global_step:0')
+            # train_op = graph.get_operation_by_name('loss/train_op')
+            # hyperparameters = tf.get_collection('hyperparameters')
 
         epoch = 0
         while True:
@@ -134,6 +149,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
 
             epoch += 1
             print('Epoch {}'.format(epoch))
+            print('----------------')
             reward_avg = reward_sum / agents_sum
             td_loss_avg = tdloss_sum / total_len
             entropy_avg = entropy_sum / total_len
@@ -185,7 +201,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
         # Pointer to change randomly the background traffic injected to the link
         tb_counter = 0
-        br_background = 3.0  # Initialize background traffic
+        br_background = 3.0  # Initialize background traffic: 3 Mb
 
         while True:
 
@@ -193,8 +209,8 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # while True:
 
             print('Consuming data from Kafka...')
-            resolution, fps_out, bitrate_out, duration_out, mos_out = consume_kafka(consumer)
-            print('Probe bitrate: {}'.format(bitrate_out))
+            resolution, fps_out, bitrate_out, duration_out, mos_out, timestamp = consume_kafka(consumer)
+            # print('Probe bitrate: {}'.format(bitrate_out))
 
             resp_get_vce_res = requests.get('http://localhost:' + VCE_RES_PORT).json()
             resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
@@ -212,7 +228,6 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             #            "act_bitrate": {"name": "Actual Bitrate [kbps]", "value": 3159.4},
             #            "enc_speed": {"name": "Encoding Speed [x]", "value": 1.12}}}
 
-            timestamp = resp_get_vce_res['stats']['time']
             bitrate_in = resp_get_vce_br['stats']['act_bitrate']['value']
             max_bitrate = resp_get_vce_br['stats']['max_bitrate']['value']
             ram_in = resp_get_vce_br['stats']['pid_ram']['value']
@@ -280,12 +295,16 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             predictions_cumsum = np.cumsum(predictions)
             # print('\nAction cumsum: ', predictions_cumsum)
             action = (predictions_cumsum > np.random.randint(1, RAND_ACTION) / float(RAND_ACTION)).argmax()
-            print('Last action: {0}. New action: {1}.'.format(last_action, action))
+            # print('Last action: {0}. New action: {1}.'.format(last_action, action))
 
             entropy_matrix.append(environment.compute_entropy(predictions[0]))
 
             br_predicted = list(PROFILES[action].values())[0]
             res_predicted = list(PROFILES[action].keys())[0]
+
+            print('Previous Profile-> Bitrate: {}. Resolution: {}'.format(list(PROFILES[last_action].values())[0],
+                                                                          list(PROFILES[last_action].keys())[0]))
+            print('Predicted Profile-> Bitrate: {}. Resolution: {}'.format(br_predicted, res_predicted))
 
             if res_predicted == 1080:
                 res_out = 'high'
@@ -293,21 +312,18 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                 res_out = 'low'
 
             # Send request to change resolution
-            resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
-            if resp_post_vco_res.status_code == 200:  # if response:
-                print('Report to the vCE_resolution success')
-            elif resp_post_vco_res.status_code == 404:  # else:
-                print('Report to the vCE_resolution not found')
-
-            print('Previous Profile-> Bitrate: {}. Resolution: {}'.format(list(PROFILES[last_action].values())[0],
-                                                                          list(PROFILES[last_action].keys())[0]))
-            print('Predicted Profile-> Bitrate: {}. Resolution: {}'.format(br_predicted, res_predicted))
-
             if RESOLUTIONS[res_predicted] != RESOLUTIONS[int(resolution)]:
                 print('Changing resolution...')
+                resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
+                if resp_post_vco_res.status_code == 200:  # if response:
+                    print('Report to the vCE_resolution success')
+                elif resp_post_vco_res.status_code == 404:  # else:
+                    print('Report to the vCE_resolution not found')
+
+                time.sleep(3)
                 requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
                 requests.get('http://192.168.0.26:' + PROBE_PORT + '/refresh/')
-                time.sleep(10)
+                time.sleep(8)
 
             # Send request to change bitrate
             resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + str(br_predicted*1000))
@@ -316,9 +332,9 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             elif resp_post_vco_res.status_code == 404:  # else:
                 print('Report to the vCE_bitrate not found')
 
-            print(int(resolution))
-            print('Resolution actual: {}'.format(int(resolution)))
-            print('Resolution predicted: {}'.format(res_predicted))
+            # print(int(resolution))
+            # print('Resolution actual: {}'.format(int(resolution)))
+            # print('Resolution predicted: {}'.format(res_predicted))
 
             # To receive status from the vco-resolution
             # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
@@ -328,11 +344,12 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                 br_background = randint(0, MAX_CAPACITY/1000)  # Generate randomly the traffic background
                 requests.post('http://localhost:' + TB_PORT + '/bitrate/' + str(br_background*1000))
                 tb_counter = 0
+                requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
 
             tb_counter += 1
 
             print('----------------')
-            time.sleep(1)
+            time.sleep(3)
 
             log_file.write(str(timestamp) + '\t' +
                            str(reward) + '\t' +
@@ -372,6 +389,8 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             actions[action] = 1
             actions_matrix.append(actions)
 
+            tb_counter = 0
+
 
 def main():
 
@@ -406,6 +425,8 @@ def main():
         auto_offset_reset='latest',  # Collect at the end of the log. To collect every message: 'earliest'
         enable_auto_commit=True,
         value_deserializer=lambda x: loads(x.decode('utf-8')))
+
+    print('Starting the program...')
 
     # Create a coordinator and multiple agent processes. This projects aims to train only one agent
     coordinator = mp.Process(target=sup_agent, args=(net_params_queues, exp_queues))

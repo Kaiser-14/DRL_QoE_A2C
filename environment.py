@@ -76,9 +76,10 @@ def consume_kafka(consumer):
         bitrate = content['value']['bitrate']
         duration = content['value']['duration']
         mos = content['value']['mos']
+        timestamp = content['timestamp']
         break
 
-    return resolution, frame_rate, bitrate, duration, mos
+    return resolution, frame_rate, bitrate, duration, mos, timestamp
 
 
 def assign_profile(resolution, bitrate):
