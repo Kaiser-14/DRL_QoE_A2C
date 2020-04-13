@@ -19,11 +19,11 @@ class Environment:
 
 def model_summary():
     td_loss = tf.Variable(0.)
-    tf.summary.scalar("TD_loss", td_loss)
+    tf.summary.scalar("TD_Loss", td_loss)
     total_reward = tf.Variable(0.)
-    tf.summary.scalar("Total Reward", total_reward)
+    tf.summary.scalar("Total_Reward", total_reward)
     avg_entropy = tf.Variable(0.)
-    tf.summary.scalar("Avg_entropy", avg_entropy)
+    tf.summary.scalar("Average_Entropy", avg_entropy)
 
     model_vars = [td_loss, total_reward, avg_entropy]
     model_ops = tf.summary.merge_all()

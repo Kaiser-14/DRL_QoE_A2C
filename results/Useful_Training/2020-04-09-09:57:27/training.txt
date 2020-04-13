@@ -1,0 +1,11 @@
+Streaming: 10 Mbps
+Link capacity: 20 Mb
+Traffic Background: Random and not included in states functions. Change each training report
+
+Reward functions:
+rew_mos = math.exp(4) - math.exp(5-float(mos_out))
+rew_br = -2*math.exp(2 * (1 + distance.canberra(float(bitrate_in) / 1000, float(bitrate_out) / 1000)))
+rew_smooth = 12 * np.log(1 - distance.canberra(action + 1, last_action + 1))
+rew_profile = 3*(12 - action)
+
+Training report: 25

@@ -52,13 +52,13 @@ class Actor(object):
     # Using Keras
     def create_actor(self):
         input_actor = Input(shape=[None, self.states_dim[0], self.states_dim[1]])
-        h1 = Dense(24, activation='relu')(input)
-        h2 = Dense(48, activation='relu')(h1)
-        h3 = Dense(24, activation='relu')(h2)
+        h1 = Dense(128, activation='relu')(input_actor)
+        h2 = Dense(64, activation='relu')(h1)
+        h3 = Dense(128, activation='relu')(h2)
         output_actor = Dense(self.actions_dim, activation='relu')(h3)
 
         model_actor = Model(input=input, output=output_actor)
-        adam = Adam(lr=0.001)
+        adam = Adam(lr=self.learning_rate)
         model_actor.compile(loss="mse", optimizer=adam)
 
         return input_actor, output_actor, model_actor
@@ -68,22 +68,36 @@ class Actor(object):
             input_actor = tflearn.input_data(shape=[None, self.states_dim[0], self.states_dim[1]])
 
             split_0 = tflearn.fully_connected(input_actor[:, 0:1, -1], 128, activation='relu')
-            #split_1 = tflearn.fully_connected(input_actor[:, 1:2, -1], 128, activation='relu')
+            # split_1 = tflearn.fully_connected(input_actor[:, 1:2, -1], 128, activation='relu')
             split_2 = tflearn.conv_1d(input_actor[:, 1:2, :], 128, 4, activation='relu')
             split_3 = tflearn.conv_1d(input_actor[:, 2:3, :], 128, 4, activation='relu')
-            #split_4 = tflearn.conv_1d(input_actor[:, 4:5, : self.actions_dim], 128, 4, activation='relu')
-            #split_5 = tflearn.fully_connected(input_actor[:, 4:5, -1], 128, activation='relu')
+            # split_4 = tflearn.conv_1d(input_actor[:, 2:3, : self.actions_dim], 128, 4, activation='relu')
+            # split_5 = tflearn.fully_connected(input_actor[:, 2:3, -1], 128, activation='relu')
 
             split_2_flat = tflearn.flatten(split_2)
             split_3_flat = tflearn.flatten(split_3)
-            #split_4_flat = tflearn.flatten(split_4)
+            # split_4_flat = tflearn.flatten(split_4)
 
-            #merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
+            # merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
+            # merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat], 'concat')
             merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat], 'concat')
-            dense_net_0 = tflearn.fully_connected(merge_net, 128, activation='relu')
+            dense_net_0 = tflearn.fully_connected(merge_net, 64, activation='relu')
             output_actor = tflearn.fully_connected(dense_net_0, self.actions_dim, activation='softmax')
 
             return input_actor, output_actor
+
+    def create_actor1(self):
+        with tf.variable_scope('actor'):
+            input_actor = tflearn.input_data(shape=[None, self.states_dim[0], self.states_dim[1]])
+
+            h0 = tflearn.fully_connected(input_actor, 128, activation='relu')
+            h1 = tflearn.conv_1d(h0, 64, 4, activation='relu')
+            h2 = tflearn.conv_1d(h1, 64, 4, activation='relu')
+            dense_net_0 = tflearn.fully_connected(h2, 128, activation='relu')
+
+            output_actor = tflearn.fully_connected(dense_net_0, self.actions_dim, activation='softmax')
+
+        return input_actor, output_actor
 
     def train(self, input, actions, actor_weights):
         self.sess.run(self.optimize, feed_dict={self.input: input,

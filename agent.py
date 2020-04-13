@@ -23,20 +23,20 @@ NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
 random_seed = 42
 
-NUM_STATES = 5  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
+NUM_STATES = 4  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
 LEN_STATES = 8  # Number of states to hold
-TRAINING_REPORT = 10  # Batch to write information into the logs
+TRAINING_REPORT = 25  # Batch to write information into the logs
 
 # Different profiles combining resolutions and bitrate
 # PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
 #             8: {720: 15}, 9: {720: 10}, 10: {720: 7.5}, 11: {720: 5}, 12: {720: 2.5}}
-PROFILES = {0: {1080: 10}, 1: {1080: 6}, 2: {1080: 4}, 3: {720: 4}, 4: {720: 2}, 5: {720: 0.5}}
+PROFILES = {0: {1080: 10}, 1: {1080: 7.5}, 2: {1080: 5}, 3: {720: 4}, 4: {720: 2.5}, 5: {720: 1}}
 RESOLUTIONS = {1080: 1, 720: 0}
 
 # DEFAULT_ACTION = 4  # PROFILES[0][1] 1080p 15Mbps
 DEFAULT_ACTION = 1  # PROFILES[0][1] 1080p 6Mbps
 MAX_BR = max(list(x.values())[0] for x in list(PROFILES.values()))
-MAX_CAPACITY = 15000.0  # in kb -> 15Mb
+MAX_CAPACITY = 20000.0  # in kb -> 15Mb
 # DEFAULT_RES = list(PROFILES[4].keys())[0]
 # DEFAULT_BITRATE = list(PROFILES[4].values())[0]
 NUM_ACTION = len(PROFILES)
@@ -155,7 +155,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
             entropy_avg = entropy_sum / total_len
 
             logging.info('Epoch: ' + str(epoch) + ' TD_Loss: ' + str(td_loss_avg) +
-                         ' Average_Reward: ' + str(reward_avg) + ' Average_Entropy: ' + str(entropy_avg))
+                         ' Total_Reward: ' + str(reward_avg) + ' Average_Entropy: ' + str(entropy_avg))
 
             summary = sess.run(model_ops, feed_dict={
                 model_vars[0]: td_loss_avg,
@@ -171,6 +171,10 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                 save_path = saver.save(sess, MODEL_DIR + "model_epoch_" +
                                        str(epoch) + ".ckpt")
                 logging.info("Model saved in file: " + save_path)
+
+            if epoch == 1000:
+                sess.close()
+                exit(0)
 
 
 def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
@@ -212,7 +216,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             resolution, fps_out, bitrate_out, duration_out, mos_out, timestamp = consume_kafka(consumer)
             # print('Probe bitrate: {}'.format(bitrate_out))
 
-            resp_get_vce_res = requests.get('http://localhost:' + VCE_RES_PORT).json()
+            # resp_get_vce_res = requests.get('http://localhost:' + VCE_RES_PORT).json()
             resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
             #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
             #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
@@ -247,7 +251,15 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Main reward, based on MOS
             # Range between 72.05 and 19.10.
             # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
-            rew_mos = math.exp(4.3) - math.exp(5-float(mos_out))
+            # rew_mos = math.exp(4) - math.exp(5-float(mos_out))
+            # rew_mos = math.exp(float(mos_out))
+            if float(mos_out) > 2.5:
+                mos = float(mos_out) - 2.5
+                aux = 2.5
+            else:
+                mos = 2.5 - float(mos_out)
+                aux = -2.5
+            rew_mos = aux * math.exp(1.5 * mos)
 
             # Penalization based on losses received by probe in terms of bitrate
             # Range between -12 and -1.
@@ -264,14 +276,19 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
             # Reward higher profiles
             # Range between 22 and 11
-            rew_profile = 2*(12 - action)
+            # rew_profile = 2*(12 - action)
+            rew_profile = math.pow(2, (5-action))
+
+            # Reward accumulating good results
+            # rew_res =
 
             # https://en.wikipedia.org/wiki/Test_functions_for_optimization
             reward = rew_mos + rew_br + rew_smooth + rew_profile
-            print('Rew_mos: {}'.format(rew_mos))
-            print('rew_br: {}'.format(rew_br))
-            print('rew_smooth: {}'.format(rew_smooth))
-            print('rew_profile: {}'.format(rew_profile))
+            print('Rew_MOS: {}'.format(rew_mos))
+            print('Rew_BR: {}'.format(rew_br))
+            print('Rew_Smooth: {}'.format(rew_smooth))
+            print('Rew_Profile: {}'.format(rew_profile))
+            print('Total Reward: {}'.format(reward))
             rewards_matrix.append(reward)
 
             last_action = action
@@ -286,9 +303,10 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Model states
             curr_state[0, -1] = float(bitrate_out) / MAX_BR  # Quality of the streaming
             curr_state[1, -1] = (float(max_bitrate) - float(bitrate_out)) / MAX_CAPACITY  # Loss rate
-            curr_state[2, -1] = RESOLUTIONS[int(resolution)]  # Resolution: 1080 (1) or 720 (0)
-            curr_state[3, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
-            curr_state[4, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
+            # curr_state[1, -1] = RESOLUTIONS[int(resolution)]  # Resolution: 1080 (1) or 720 (0)
+            curr_state[2, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
+            curr_state[3, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
+            # curr_state[3, -1] = br_background / (MAX_CAPACITY/1000)  # Current traffic background
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
@@ -312,24 +330,24 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                 res_out = 'low'
 
             # Send request to change resolution
-            if RESOLUTIONS[res_predicted] != RESOLUTIONS[int(resolution)]:
-                print('Changing resolution...')
-                resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
-                if resp_post_vco_res.status_code == 200:  # if response:
-                    print('Report to the vCE_resolution success')
-                elif resp_post_vco_res.status_code == 404:  # else:
-                    print('Report to the vCE_resolution not found')
-
-                time.sleep(3)
-                requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
-                requests.get('http://192.168.0.26:' + PROBE_PORT + '/refresh/')
-                time.sleep(8)
+            # if RESOLUTIONS[res_predicted] != RESOLUTIONS[int(resolution)]:
+            #     print('Changing resolution...')
+            #     resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
+            #     if resp_post_vco_res.status_code == 200:  # if response:
+            #         print('Report to the vCE_resolution success')
+            #     elif resp_post_vco_res.status_code == 404:  # else:
+            #         print('Report to the vCE_resolution not found')
+            #
+            #     time.sleep(3)
+            #     requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
+            #     requests.get('http://192.168.0.26:' + PROBE_PORT + '/refresh/')
+            #     time.sleep(8)
 
             # Send request to change bitrate
             resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + str(br_predicted*1000))
             if resp_post_vco_br.status_code == 200:  # if response:
                 print('Report to the vCE_bitrate success')
-            elif resp_post_vco_res.status_code == 404:  # else:
+            elif resp_post_vco_br.status_code == 404:  # else:
                 print('Report to the vCE_bitrate not found')
 
             # print(int(resolution))
@@ -340,16 +358,16 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
-            if tb_counter == 5:
-                br_background = randint(0, MAX_CAPACITY/1000)  # Generate randomly the traffic background
+            if tb_counter == 1:
+                br_background = randint(1, MAX_CAPACITY/1000)  # Generate randomly the traffic background
                 requests.post('http://localhost:' + TB_PORT + '/bitrate/' + str(br_background*1000))
                 tb_counter = 0
-                requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
+                # requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
 
             tb_counter += 1
 
             print('----------------')
-            time.sleep(3)
+            time.sleep(4)
 
             log_file.write(str(timestamp) + '\t' +
                            str(reward) + '\t' +
@@ -381,15 +399,13 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
                 log_file.write('\n')
 
-                requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
+                # requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
 
             states_matrix.append(curr_state)
 
             actions = np.zeros(NUM_ACTION)
             actions[action] = 1
             actions_matrix.append(actions)
-
-            tb_counter = 0
 
 
 def main():
