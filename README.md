@@ -10,14 +10,14 @@ The A2C algorithm is developed during this project, being trained through a live
 
 Following these instructions you will prepare the environment to test the project for development and running for testing purposes. It has been tested only in Ubuntu, but the software used is available in every OS, so take a look in each step if you are using a different OS.
 
-### Prerequisites
+### Installing
 
 The project is deployed in a local machine, so you need to install the next software and dependencies to start working:
 
 Python // Docker // VirtualBox
 
 1. Install Python [Choose a release for Linux from https://www.python.org/downloads/source/].
-```
+```bash
 wget https://www.python.org/ftp/python/3.6.9/Python-3.6.9.tar.xz
 tar -xvf Python-3.6.9.tar
 cd Python-3.6.9
@@ -28,48 +28,48 @@ python3.6 -V -> Python3.69rc1 [/usr/bin/local/python3.6]
 ```
 
 * Install pip if not installed in your machine.
-```
+```bash
 sudo apt install pip3
 ```
 
 * Install Python virtual environment
-```
+```bash
 pip3 install virtualenv virtualenvwrapper
 ```
 
 * Some necessary packages.
 
 2. Install Java
-```
+```bash
 sudo apt install default-jdk
 ```
 
 3. Install Docker
-```
+```bash
 sudo apt install default-jdk
 ```
 
 4. Install VirtualBox
-```
+```bash
 sudo apt install default-jdk
 ```
 
 5. Install FFmpeg
-```
+```bash
 sudo apt install ffmpeg
 ```
 
 * Validate installation
-```
+```bash
 ffmpeg -version
 ```
 
 6. Install npm
-```
+```bash
 npm install
 ```
 
-### Installing
+### Setup
 
 A step by step to get the development environment installed. Note that there are several parts included and need to be perfectly prepared to have the complete environment for training.
 
@@ -78,7 +78,7 @@ A step by step to get the development environment installed. Note that there are
 A distributed platform to exchange messages in terms of publisher/consumer.
 
 1. Download Apache Kafka
-```
+```bash
 wget http://www-us.apache.org/dist/kafka/2.4.0/kafka_2.13-2.4.0.tgz
 tar xzf kafka_2.13-2.4.0.tgz
 mv kafka_2.13-2.4.0 /usr/local/kafka
@@ -86,7 +86,7 @@ mv kafka_2.13-2.4.0 /usr/local/kafka
 
 2. Setup Kafka Systemd Unit files
 * Create systemd unit file for Zookeeper
-```
+```bash
 nano /etc/systemd/system/zookeeper.service
 ```
 * And the content
@@ -108,7 +108,7 @@ WantedBy=multi-user.target
 ```
 
 * Create systemd unit file for Kafka
-```
+```bash
 nano /etc/systemd/system/kafka.service
 ```
 
@@ -130,12 +130,12 @@ WantedBy=multi-user.target
 ```
 
 * Reload system daemon
-```
+```bash
 systemctl daemon-reload
 ```
 
 3. Start Zookeeper and Kafka server
-```
+```bash
 sudo systemctl start zookeeper
 sudo systemctl start kafka
 sudo systemctl status zookeeper
@@ -143,7 +143,7 @@ sudo systemctl status kafka
 ```
 
 4. Create topics
-```
+```bash
 cd /usr/local/kafka
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic tfm.probe.in
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic tfm.probe.out
@@ -151,35 +151,35 @@ bin/kafka-topics.sh --list --zookeeper localhost:2181
 ```
 
 5. If you want to test Kafka server working, send some messages to any topic (also try from a different machine and replace localhost in the producer to the IP of the Kafka Server, to test server reachable from outside server localhost)
-```
+```bash
 bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic notifications
 bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic notifications --from-beginning
 bin/kafka-console-producer.sh --broker-list localhost:9092 --topic notifications
 ```
 
-#### VCE (virtual Compression Engine)
+#### vCE (virtual Compression Engine)
 
-The VCE is composed by two virtual compression images which are composed by FFmpeg commands that handle specific characteristics of the streaming (resolution and bitrate).
+The vCE is composed by two virtual compression images which start FFmpeg processes that handle specific characteristics of the streaming (resolution and bitrate).
 
 ##### vCompression Resolution
 
 1. Download vCompression Gitlab.  Resolution branch -> resolution
-```
+```bash
 git clone
 ```
 
 2. Inside the folder, create the docker image
-```
+```bash
 sudo docker build -t vcompression-res .
 ```
 
 3. Create a container based on the previous image. Note: use a free port on your machine.
-```
+```bash
 sudo docker run --name vcompression-res -p 3001:3001 -d vco-res
 ```
 
 4. For the next steps you will need some information from the docker containers. Enter into the container and modify some parameters.
-```
+```bash
 sudo docker ps -a
 sudo docker exec -it vco-res /bin/bash
 sudo apt update
@@ -188,12 +188,12 @@ nano index.js
 ```
 
 * KAFKA_IDENTIFIER. In order to avoid problems with local machine permissions, from a terminal outside the container run the next code and find UUID:
-```
+```bash
 nano /usr/sbin/dmidecode
 ```
 
 * For the next steps you will need some information from the docker containers. You can run the next code to check it in your local machine.
-```
+```bash
 sudo docker ps -a
 ```
 
@@ -201,13 +201,17 @@ sudo docker ps -a
 
 * Modify FFmpeg input and output which correspond to the streaming that you are going to use to train the model, and the IP of the docker container of the vcompression-bitrate (see following steps), respectively.
 
+```javascript
 const FFMPEG_INPUT = 'udp://224.0.1.4:5678';
 const FFMPEG_OUTPUTS = 'udp://192.168.0.55';
+```
 
 5. EXTRA. You can also install the vcompression-resolution as a system service, but this project is installed as a docker service, so skip these steps if you have installed via docker.
 
 * Install as systemd service
+```bash
 nano /etc/systemd/system/vcompression.service
+```
 
 * Content. Note: change user and working directory based on your actual working directory. You will also have to modify the file .env to make everything working, e.g., API ports and FFmpeg input and output.
 
@@ -228,7 +232,7 @@ WantedBy=multi-user.target
 ```
 
 * Reload systemd daemon and start Service
-```
+```bash
 systemctl daemon-reload
 systemctl enable vcompression.service
 systemctl start vcompression.service
@@ -238,29 +242,29 @@ systemctl status vcompression.service
 ##### vCompression Bitrate
 
 1. Clone repository vcompression bitrate (Master branch -> bitrate).
-```
+```bash
 A
 ```
 
 2. Inside the folder, create the docker image
-```
+```bash
 sudo docker build -t vcompression-br .
 ```
 
 3. Create a container based on the previous image. Note: use a free port on your machine.
-```
+```bash
 sudo docker run --name vcompression-br -p 3000:3000 -d vco-br
 ```
 
 4. For the next steps you will need some information from the docker containers. Enter into the container and modify some parameters.
-```
+```bash
 sudo docker ps -a
 sudo docker exec -it vco-br /bin/bash
 nano index.js
 ```
 
 * KAFKA_IDENTIFIER. In order to avoid problems with local machine permissions, from a terminal outside the container run the next code and find UUID:
-```
+```bash
 nano /usr/sbin/dmidecode
 ```
 
@@ -268,8 +272,10 @@ nano /usr/sbin/dmidecode
 
 * Modify FFmpeg input and output which correspond to the IP address of the FFmpeg output of the vCompression-resolution, and the IP address of the virtual machine which host the probe (see following steps), respectively.
 
+```javascript
 const FFMPEG_INPUT = 'udp://224.0.1.4:5678';
 const FFMPEG_OUTPUTS = 'udp://192.168.0.55';
+```
 
 5. EXTRA. You can also install the vcompression-bitrate as a system service, following the same steps and in the case of the vcompression-resolution, but remember that this project uses docker to recreate the environment.
 
@@ -278,31 +284,31 @@ const FFMPEG_OUTPUTS = 'udp://192.168.0.55';
 The goal of the project is to simulate a real environment, so it is generated some noise with a traffic background simulating the behaviour of other consumers retrieving content from the network. You can use other tool, but this project use the vCE focused on bitrate due to the ability to modify the maximum bitrate on demand.
 
 1. Using the same vcompression-resolution image as created before, create a new container with a free port on your machine.
-```
+```bash
 sudo docker run --name traffic_bg -p 3002:3002 -d vcompression-br
 ```
 
 2. In the same way as the vcompression-bitrate, modify specific parameters.
 
 * Enter into the container.
-```
+```bash
 sudo docker exec -it traffic_bg /bin/bash
 ```
 
 * Modify parameters in index.js.
-```
+```bash
 nano index.js
 ```
 
-* API_PORT = 3002 (or the port that you set)
-* const FFMPEG_INPUT = 'udp://224.0.1.4:5678'; (IP address of any UDP streaming or local file with enough bitrate (mainly RAW content))
-* const FFMPEG_OUTPUTS = 'udp://192.168.0.55'; (IP address of the virtual machine where the probe is hosted; feel free to choose a free port)
+* ```API_PORT = 3002``` (or the port that you set)
+* ```const FFMPEG_INPUT = 'udp://224.0.1.4:5678';``` (IP address of any UDP streaming or local file with enough bitrate (mainly RAW content))
+* ```const FFMPEG_OUTPUTS = 'udp://192.168.0.55';``` (IP address of the virtual machine where the probe is hosted; feel free to choose a free port)
 
 
 #### Probe deployment
 
 1. Pull images from Docker Hub and start two daemon with two probes
-```
+```bash
 sudo docker login
 sudo docker ps -a
 sudo docker pull kaiser1414/upm_tfm:1.1.3
@@ -310,26 +316,26 @@ sudo docker run -d --name probe -p 3005:3005 kaiser1414/upm_tfm:1.1.3
 ```
 
 2. Enter into the container.
-```
+```bash
 sudo docker exec -it probe /bin/bash
 ```
 
 3. Modify specific files to send messages to the corresponding topics.
-```
+```bash
 nano /home/test.js
 ```
 
 * KAFKA_TOPIC = 'tfm.probe.out'
-* IP:PORT = 'localhost:9092' (or address where the Kafka server is located)
+* var producer = Kafka.start('localhost', '9092') (or IP address and port where the Kafka server is located)
 
 2. Move to the working directory and install some components.
-```
+```bash
 cd var/www/html/proyectos/videoqualityprobe/Release/
 ```
 
 3. Create a JSON with all the dependencies for NPM.
 * First create the file.
-```
+```bash
 nano package.json
 ```
 
@@ -375,13 +381,13 @@ nano package.json
 ```
 
 4. Install node.js.
-```
+```bash
 npm install
 ```
 
 5. Create the index.js which will control the behaviour of the probe.
 * First create the file.
-```
+```bash
 nano index.js
 ```
 
@@ -436,60 +442,66 @@ fastify.listen(API_PORT, '0.0.0.0', (err, address) => {
 
 #### Deep Reinforcement Learning model
 
-3. Create new virtual environment
-```
+1. Create new virtual environment
+```bash
 which python3.6 -> e.g. /usr/bin/python3.6
 virtualenv --python=/usr/bin/python3.6 ~/virtualenv/py3.6 [Linux/Mac users only]
 conda create -n py3.6 python=3.6 anaconda [Windows users only]
 ```
 
-4. Activate it
+2. Activate the virtual environment
+```bash
 source ~/virtualenv/py3.6 [Mac/Linux users only]
 conda activate py3.6 [Windows users only]
+```
 
-5. Install necessary packages
+3. Install necessary packages
+```bash
 pip3 install tflearn tensorflow matplotlib
+```
 
-6. Clone repository
-git clone ...
+4. Clone repository
+```bash
+git clone https://github.com/Kaiser-14/QoE_RL_A3C.git
+```
 
-## Running the project
+## Project running
 
 Enable each part to start the whole system
 
 1. Start FFmpeg process to transmit to the Docker 'probe_in' direction
-```
+```bash
 ffmpeg -re -i "udp://224.0.1.4:5678?overrun_nonfatal=1&fifo_size=50000000" -c:v copy -c:a copy -f mpegts udp://172.17.0.2:5678
 ```
 
-X. Enable vcompression focused on handling resolution.
-```
+2. Enable vcompression focused on handling resolution.
+```bash
 sudo docker exec -it vco-res /bin/bash/
 node index.js
 ```
 
-* If the ffmpeg process are continuosly closing, restart the container.
-```
+* If the ffmpeg processes are continuosly closing, restart the container.
+```bash
 exit (inside the container)
 sudo docker restart vco-res (in the same terminal after exit the container)
 sudo docker exec -it vco-res /bin/bash/
 ```
 
 * vcompression-res has some APIs to interact via terminal. Note: use the same port that you set in the creation of the container
-```
-curl -X GET http://localhost:3000/ (to receive actual information of the streaming process)
-curl -X POST http://localhost:3000/resolution/high (to modify the resolution: 1080p)
-curl -X POST http://localhost:3000/resolution/low (to modify the resolution: 720p)
+```bash
+curl -X GET http://localhost:3000/ (receive actual information of the streaming process)
+curl -X POST http://localhost:3000/resolution/high (modify the resolution to 1080p)
+curl -X POST http://localhost:3000/resolution/low (modify the resolution to 720p)
 ```
 
-X. Enable vcompression focused on handling bitrate.
-```
+3. Enable vcompression focused on handling bitrate.
+```bash
 sudo docker exec -it vco-br /bin/bash/
 node index.js
 ```
 
-* If the ffmpeg process are continuosly closing, restart the container.
-```
+* If the ffmpeg processes are continuosly closing, restart the container.
+```bash
 exit (inside the container)
 sudo docker restart vco-br (in the same terminal after exit the container)
 sudo docker exec -it vco-br /bin/bash/
@@ -497,34 +509,36 @@ node index.js
 ```
 
 * vcompression-br has some APIs to interact via terminal. Note: use the same port that you set in the creation of the container
-```
+```bash
 curl -X GET http://localhost:3001/ (to receive actual information of the streaming process)
-curl -X POST http://localhost:3001/bitrate/10000 (to modify the maximum bitrate)
+curl -X POST http://localhost:3001/bitrate/10000 (modify the maximum bitrate)
 curl -X POST http://localhost:3001/refresh/ (refresh the internal FFmpeg)
 ```
 
-X. Enable Traffic Background
-```
+4. Enable Traffic Background
+```bash
 sudo docker exec -it traffic_bg /bin/bash
 ```
 * run the process.
-```
+```bash
 sudo docker exec -it traffic-bg /bin/bash
 node index.js
 ```
 
 * traffic-bg has the same APIs as the vco-br except the refresh API.
-```
-curl -X GET http://localhost:3002/ (to receive actual information of the streaming process)
-curl -X POST http://localhost:3002/bitrate/10000 (to modify the maximum bitrate)
+```bash
+curl -X GET http://localhost:3002/ (receive actual information of the streaming process)
+curl -X POST http://localhost:3002/bitrate/10000 (modify the maximum bitrate)
 ```
 
-X. Enable probe
-```
+5. Enable probe
+```bash
 sudo docker exec -it probe /bin/bash
 cd var/www/html/proyectos/videoqualityprobe/Release/
 node index.js
 ```
 
-7. Execute the model
+6. Execute the model
+```bash
 python3 agent.py
+```
