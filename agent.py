@@ -23,9 +23,10 @@ NUM_AGENTS = 1
 # NUM_AGENTS = multiprocessing.cpu_count()  # Enable to fully process the model
 random_seed = 42
 
-NUM_STATES = 4  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
+NUM_STATES = 5  # Number of possible states: quality, loss rate, resolution, encoding quality, ram usage
 LEN_STATES = 8  # Number of states to hold
 TRAINING_REPORT = 25  # Batch to write information into the logs
+TRAINING_LEN = 500  # Limit of epochs to train the model
 
 # Different profiles combining resolutions and bitrate
 # PROFILES = {1: {1080: 50}, 2: {1080: 30}, 3: {1080: 20}, 4: {1080: 15}, 5: {1080: 10}, 6: {1080: 5}, 7: {720: 25},
@@ -172,7 +173,7 @@ def sup_agent(net_params_queues, exp_queues):  # Supervisor agent
                                        str(epoch) + ".ckpt")
                 logging.info("Model saved in file: " + save_path)
 
-            if epoch == 1000:
+            if epoch == TRAINING_LEN:
                 sess.close()
                 exit(0)
 
@@ -258,7 +259,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
                 aux = 2.5
             else:
                 mos = 2.5 - float(mos_out)
-                aux = -2.5
+                aux = -4.0
             rew_mos = aux * math.exp(1.5 * mos)
 
             # Penalization based on losses received by probe in terms of bitrate
@@ -304,9 +305,9 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             curr_state[0, -1] = float(bitrate_out) / MAX_BR  # Quality of the streaming
             curr_state[1, -1] = (float(max_bitrate) - float(bitrate_out)) / MAX_CAPACITY  # Loss rate
             # curr_state[1, -1] = RESOLUTIONS[int(resolution)]  # Resolution: 1080 (1) or 720 (0)
-            curr_state[2, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
-            curr_state[3, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
-            # curr_state[3, -1] = br_background / (MAX_CAPACITY/1000)  # Current traffic background
+            curr_state[2, -1] = br_background / (MAX_CAPACITY/1000)  # Current traffic background
+            curr_state[3, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
+            curr_state[4, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
@@ -359,7 +360,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
             if tb_counter == 1:
-                br_background = randint(1, MAX_CAPACITY/1000)  # Generate randomly the traffic background
+                br_background = randint(1, MAX_CAPACITY/1000 - 2)  # Generate randomly the traffic background
                 requests.post('http://localhost:' + TB_PORT + '/bitrate/' + str(br_background*1000))
                 tb_counter = 0
                 # requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')

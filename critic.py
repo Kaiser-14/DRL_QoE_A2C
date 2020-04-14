@@ -70,8 +70,8 @@ class Critic(object):
             # split_1 = tflearn.fully_connected(input_critic[:, 1:2, -1], 128, activation='relu')
             split_2 = tflearn.conv_1d(input_critic[:, 1:2, :], 128, 4, activation='relu')
             split_3 = tflearn.conv_1d(input_critic[:, 2:3, :], 128, 4, activation='relu')
-            # split_4 = tflearn.conv_1d(input_critic[:, 2:3, :], 128, 4, activation='relu')
-            # split_5 = tflearn.fully_connected(input_critic[:, 2:3, -1], 128, activation='relu')
+            # split_4 = tflearn.conv_1d(input_critic[:, 3:4, :], 128, 4, activation='relu')
+            split_5 = tflearn.fully_connected(input_critic[:, 3:4, -1], 128, activation='relu')
 
             split_2_flat = tflearn.flatten(split_2)
             split_3_flat = tflearn.flatten(split_3)
@@ -79,7 +79,7 @@ class Critic(object):
 
             # merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_3_flat, split_4_flat, split_5], 'concat')
             # merge_net = tflearn.merge([split_0, split_1, split_2_flat, split_4_flat, split_5], 'concat')
-            merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat], 'concat')
+            merge_net = tflearn.merge([split_0, split_2_flat, split_3_flat, split_5], 'concat')
 
             dense_net_0 = tflearn.fully_connected(merge_net, 64, activation='relu')
             output_critic = tflearn.fully_connected(dense_net_0, 1, activation='linear')
