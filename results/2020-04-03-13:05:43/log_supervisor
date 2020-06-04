@@ -1,0 +1,52 @@
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:75: The name tf.Session is deprecated. Please use tf.compat.v1.Session instead.
+
+WARNING:tensorflow:From /home/arp/.local/lib/python3.6/site-packages/tflearn/initializations.py:174: calling TruncatedNormal.__init__ (from tensorflow.python.ops.init_ops) with dtype is deprecated and will be removed in a future version.
+Instructions for updating:
+Call initializer instance with the dtype argument instead of passing it to the constructor
+WARNING:tensorflow:From /home/arp/.local/lib/python3.6/site-packages/tflearn/initializations.py:119: calling UniformUnitScaling.__init__ (from tensorflow.python.ops.init_ops) with dtype is deprecated and will be removed in a future version.
+Instructions for updating:
+Call initializer instance with the dtype argument instead of passing it to the constructor
+WARNING:tensorflow:From /home/arp/.local/lib/python3.6/site-packages/tensorflow/python/util/deprecation.py:507: UniformUnitScaling.__init__ (from tensorflow.python.ops.init_ops) is deprecated and will be removed in a future version.
+Instructions for updating:
+Use tf.initializers.variance_scaling instead with distribution=uniform to get equivalent behavior.
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/actor.py:42: calling reduce_sum_v1 (from tensorflow.python.ops.math_ops) with keep_dims is deprecated and will be removed in a future version.
+Instructions for updating:
+keep_dims is deprecated, use keepdims instead
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/actor.py:49: The name tf.train.RMSPropOptimizer is deprecated. Please use tf.compat.v1.train.RMSPropOptimizer instead.
+
+WARNING:tensorflow:From /home/arp/.local/lib/python3.6/site-packages/tensorflow/python/training/rmsprop.py:119: calling Ones.__init__ (from tensorflow.python.ops.init_ops) with dtype is deprecated and will be removed in a future version.
+Instructions for updating:
+Call initializer instance with the dtype argument instead of passing it to the constructor
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/environment.py:22: The name tf.summary.scalar is deprecated. Please use tf.compat.v1.summary.scalar instead.
+
+INFO:tensorflow:Summary name Total Reward is illegal; using Total_Reward instead.
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/environment.py:29: The name tf.summary.merge_all is deprecated. Please use tf.compat.v1.summary.merge_all instead.
+
+WARNING:tensorflow:Issue encountered when serializing data_preprocessing.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'NoneType' object has no attribute 'name'
+WARNING:tensorflow:Issue encountered when serializing data_augmentation.
+Type is unsupported, or the types of the items don't match field type in CollectionDef. Note this is a warning and probably safe to ignore.
+'NoneType' object has no attribute 'name'
+WARNING:tensorflow:From /home/arp/GitHub/QoE_RL_A3C/agent.py:85: The name tf.train.Saver is deprecated. Please use tf.compat.v1.train.Saver instead.
+
+INFO:root:Epoch: 1 TD_Loss: 1264.9825748671385 Average_Reward: 2893.661797467389 Average_Entropy: 1.7905268442630768
+INFO:root:Epoch: 2 TD_Loss: 1409.5930906277565 Average_Reward: 3330.5795365822423 Average_Entropy: 1.7898009932041168
+INFO:root:Epoch: 3 TD_Loss: 1361.5324072431313 Average_Reward: 3285.2242760249374 Average_Entropy: 1.7884938132762909
+INFO:root:Epoch: 4 TD_Loss: 1216.3014352454688 Average_Reward: 2953.103641847075 Average_Entropy: 1.7886013889312744
+INFO:root:Epoch: 5 TD_Loss: 1168.279420403359 Average_Reward: 2791.502701062583 Average_Entropy: 1.785117385983467
+INFO:root:Epoch: 6 TD_Loss: 1227.8934508801735 Average_Reward: 2928.359800305512 Average_Entropy: 1.7872323429584502
+INFO:root:Epoch: 7 TD_Loss: 1119.8592266870564 Average_Reward: 2732.8641922283773 Average_Entropy: 1.7841549736261368
+INFO:root:Epoch: 8 TD_Loss: 1188.9979591013623 Average_Reward: 2789.9585959140986 Average_Entropy: 1.7841719591617584
+INFO:root:Epoch: 9 TD_Loss: 1275.4699950588845 Average_Reward: 2824.8252597374817 Average_Entropy: 1.7854673063755035
+INFO:root:Epoch: 10 TD_Loss: 1229.9833514394259 Average_Reward: 2972.5868101691703 Average_Entropy: 1.7835404577851295
+INFO:root:Epoch: 11 TD_Loss: 1287.7441174978492 Average_Reward: 3091.3772542942816 Average_Entropy: 1.786797565817833
+INFO:root:Epoch: 12 TD_Loss: 1096.8206337855765 Average_Reward: 2799.169738263397 Average_Entropy: 1.786856431365013
+INFO:root:Epoch: 13 TD_Loss: 1233.2099324396265 Average_Reward: 2960.579176426027 Average_Entropy: 1.781475731730461
+INFO:root:Epoch: 14 TD_Loss: 1038.6241906726757 Average_Reward: 2654.0358684066327 Average_Entropy: 1.7800193566083908
+INFO:root:Epoch: 15 TD_Loss: 1206.3664498152275 Average_Reward: 2926.875206775073 Average_Entropy: 1.7785236102342605
+INFO:root:Epoch: 16 TD_Loss: 1212.7898645691891 Average_Reward: 2950.9487361136034 Average_Entropy: 1.784226336479187
+INFO:root:Epoch: 17 TD_Loss: 1244.5714082591412 Average_Reward: 2870.766032966214 Average_Entropy: 1.785163146853447
+INFO:root:Epoch: 18 TD_Loss: 1089.7278950435873 Average_Reward: 2884.9516314321395 Average_Entropy: 1.7844081312417983
+INFO:root:Epoch: 19 TD_Loss: 993.0027002773709 Average_Reward: 2376.851653020656 Average_Entropy: 1.779879311323166
+INFO:root:Epoch: 20 TD_Loss: 1020.7860193789278 Average_Reward: 2677.6254629551363 Average_Entropy: 1.7817468327283859

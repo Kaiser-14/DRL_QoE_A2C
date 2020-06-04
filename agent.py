@@ -56,10 +56,16 @@ MODEL_DIR = './results/' + NOW + '/'  # './results/model/'
 KAFKA_TOPIC_OUT = 'tfm.probe.out'
 KAFKA_SERVER = ['192.168.0.55:9092']
 
+# Docker address
+VCE_RES_ADDR = 'localhost'
+VCE_BR_ADDR = 'localhost'
+PROBE_ADDR = '192.168.0.10'
+TB_ADDR = 'localhost'
+
 # Docker ports
 VCE_RES_PORT = '3003'
 VCE_BR_PORT = '3000'
-PROBE_PORT = '3006'
+PROBE_PORT = '3005'
 TB_PORT = '3002'
 
 # Other parameters
@@ -217,8 +223,8 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             resolution, fps_out, bitrate_out, duration_out, mos_out, timestamp = consume_kafka(consumer)
             # print('Probe bitrate: {}'.format(bitrate_out))
 
-            # resp_get_vce_res = requests.get('http://localhost:' + VCE_RES_PORT).json()
-            resp_get_vce_br = requests.get('http://localhost:' + VCE_BR_PORT).json()
+            # resp_get_vce_res = requests.get('http://' + VCE_RES_ADDR + ':' + VCE_RES_PORT).json()
+            resp_get_vce_br = requests.get('http://' + VCE_BR_ADDR + ':' + VCE_BR_PORT).json()
             #  "stats": {"id": {"name": "Id", "value": ["02:42:ac:11:00:02", "2198B9A0-D7DA-11DD-8743-BCEE7B897BA7"]},
             #            "utc_time": {"name": "UTC Time [ms]", "value": 1584360198258},
             #            "pid": {"name": "PID", "value": 1100}, "pid_cpu": {"name": "CPU Usage [%]", "value": 58.3},
@@ -256,10 +262,10 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # rew_mos = math.exp(float(mos_out))
             if float(mos_out) > 2.5:
                 mos = float(mos_out) - 2.5
-                aux = 2.5
+                aux = 2.0
             else:
                 mos = 2.5 - float(mos_out)
-                aux = -4.0
+                aux = -2.0
             rew_mos = aux * math.exp(1.5 * mos)
 
             # Penalization based on losses received by probe in terms of bitrate
@@ -278,7 +284,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Reward higher profiles
             # Range between 22 and 11
             # rew_profile = 2*(12 - action)
-            rew_profile = math.pow(2, (5-action))
+            rew_profile = math.pow(2, (4-action))
 
             # Reward accumulating good results
             # rew_res =
@@ -305,9 +311,9 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             curr_state[0, -1] = float(bitrate_out) / MAX_BR  # Quality of the streaming
             curr_state[1, -1] = (float(max_bitrate) - float(bitrate_out)) / MAX_CAPACITY  # Loss rate
             # curr_state[1, -1] = RESOLUTIONS[int(resolution)]  # Resolution: 1080 (1) or 720 (0)
-            curr_state[2, -1] = br_background / (MAX_CAPACITY/1000)  # Current traffic background
-            curr_state[3, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
-            curr_state[4, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
+            # curr_state[2, -1] = br_background / (MAX_CAPACITY/1000)  # Current traffic background
+            curr_state[2, -1] = float(encoding_quality) / 69  # Streaming encoding quality [0, 69]
+            curr_state[3, -1] = float(ram_in) / 5000.0  # Ram_usage. Adapt based on computer
 
             predictions = actor_net.predict(np.reshape(curr_state, (1, NUM_STATES, LEN_STATES)))
             # print('\nAction predicted: ', predictions)
@@ -333,19 +339,19 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # Send request to change resolution
             # if RESOLUTIONS[res_predicted] != RESOLUTIONS[int(resolution)]:
             #     print('Changing resolution...')
-            #     resp_post_vco_res = requests.post('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out)
+            #     resp_post_vco_res = requests.post('http://' + VCE_RES_ADDR +':' + VCE_RES_PORT + '/resolution/' + res_out)
             #     if resp_post_vco_res.status_code == 200:  # if response:
             #         print('Report to the vCE_resolution success')
             #     elif resp_post_vco_res.status_code == 404:  # else:
             #         print('Report to the vCE_resolution not found')
             #
             #     time.sleep(3)
-            #     requests.get('http://localhost:' + VCE_BR_PORT + '/refresh/')
-            #     requests.get('http://192.168.0.26:' + PROBE_PORT + '/refresh/')
+            #     requests.get('http://' + VCE_BR_ADDR + ':' + VCE_BR_PORT + '/refresh/')
+            #     requests.get('http://' + PROBE_ADDR + ':' + PROBE_PORT + '/refresh/')
             #     time.sleep(8)
 
             # Send request to change bitrate
-            resp_post_vco_br = requests.post('http://localhost:' + VCE_BR_PORT + '/bitrate/' + str(br_predicted*1000))
+            resp_post_vco_br = requests.post('http://' + VCE_BR_ADDR + ':' + VCE_BR_PORT + '/bitrate/' + str(br_predicted*1000))
             if resp_post_vco_br.status_code == 200:  # if response:
                 print('Report to the vCE_bitrate success')
             elif resp_post_vco_br.status_code == 404:  # else:
@@ -356,14 +362,14 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             # print('Resolution predicted: {}'.format(res_predicted))
 
             # To receive status from the vco-resolution
-            # resp_get_vco_res = requests.get('http://localhost:' + VCE_RES_PORT + '/resolution/' + res_out).json()
+            # resp_get_vco_res = requests.get('http://' + VCE_RES_ADDR + ':' + VCE_RES_PORT + '/resolution/' + res_out).json()
             # {"status":true,"stats":{"frame":"2635","fps":"26","q":"1.0","size":"68432","time":"00:01:48.98","bitrate":"5143.9kbits/s","speed":"1.06x"}}'
 
             if tb_counter == 1:
                 br_background = randint(1, MAX_CAPACITY/1000 - 2)  # Generate randomly the traffic background
-                requests.post('http://localhost:' + TB_PORT + '/bitrate/' + str(br_background*1000))
+                requests.post('http://' + TB_ADDR + ':' + TB_PORT + '/bitrate/' + str(br_background*1000))
                 tb_counter = 0
-                # requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
+                # requests.get('http://' + VCE_RES_ADDR + ':' + VCE_RES_PORT + '/refresh/')
 
             tb_counter += 1
 
@@ -400,7 +406,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
                 log_file.write('\n')
 
-                # requests.get('http://localhost:' + VCE_RES_PORT + '/refresh/')
+                # requests.get('http://' + VCE_RES_ADDR + ':' + VCE_RES_PORT + '/refresh/')
 
             states_matrix.append(curr_state)
 
