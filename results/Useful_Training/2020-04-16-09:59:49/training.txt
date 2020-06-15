@@ -5,7 +5,7 @@ Traffic Background: Random and included in states functions. Change each iterati
 Reward functions:
 if float(mos_out) > 2.5:
 aux + 2.5 -4.0
-rew_mos = aux * math.exp(2.0 * mos)
+rew_mos = aux * math.exp(1.5 * mos)
 rew_br = -math.exp(2 * (1 + distance.canberra(float(bitrate_in) / 1000, float(bitrate_out) / 1000)))
 rew_smooth = 12 * np.log(1 - distance.canberra(action + 1, last_action + 1))
 rew_profile = math.pow(2, (4-action))

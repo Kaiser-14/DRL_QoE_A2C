@@ -4,7 +4,7 @@
 
 One of the most powerful and studied fields in recent years are Deep Learning and Reinforcement Learning. In general, the first is responsible for simulating neural networks to achieve greater efficiency in training Machine Learning models, while the second seeks to predict what actions an agent should take, maximizing the reward received. The combination of both areas causes an algorithm called Advantage Actor Critic (A2C).
 
-The A2C algorithm is developed during this project, being trained through a live television signal. The system will offer the current bitrate and resolution parameters to the model, and through iterative training, the model will learn to configure the optimal settings for the state in which both the transmission and the network are based on the rewards received. This method combines the fields of Deep Learning and Reinforcement Learning since it uses neural networks for creation for both the Actor and the Critic; and second, because the algorithm itself updates its policy parameters by obtaining random actions, reinforcing those that return a greater reward.
+The A2C algorithm is developed during this project, being trained through a live television signal. The system will offer the current bitrate parameters to the model, and through iterative training, the model will learn to configure the optimal settings for the state in which both the transmission and the network are based on the rewards received. This method combines the fields of Deep Learning and Reinforcement Learning since it uses neural networks for creation for both the Actor and the Critic; and second, because the algorithm itself updates its policy parameters by obtaining random actions, reinforcing those that return a greater reward.
 
 ## Getting Started
 
@@ -165,7 +165,7 @@ The vCE is composed by two virtual compression images which start FFmpeg process
 
 1. Download vCompression Gitlab.  Resolution branch -> resolution
 ```bash
-git clone
+git clone https://github.com/5g-media/vCompression.git (Check to resolution branch)
 ```
 
 2. Inside the folder, create the docker image
@@ -243,7 +243,7 @@ systemctl status vcompression.service
 
 1. Clone repository vcompression bitrate (Master branch -> bitrate).
 ```bash
-A
+git clone https://github.com/5g-media/vCompression.git  (Check to master branch)
 ```
 
 2. Inside the folder, create the docker image
@@ -305,13 +305,43 @@ nano index.js
 * ```const FFMPEG_OUTPUTS = 'udp://192.168.0.55';``` (IP address of the virtual machine where the probe is hosted; feel free to choose a free port)
 
 
+#### Traffic Manager
+Modify Traffic Control to handle the link bandwidth.
+
+1. Create a file called tunnel.sh
+```bash
+nano tunnel.sh
+```
+
+2. Include the following lines (Check if the network interface name enp0s3 is the same, changing if neccessary).
+```bash
+modprobe ifb numifbs=1
+ip link set dev ifb0 up
+sudo tc qdisc del dev enp0s3 ingress
+sudo tc qdisc del dev ifb0 root
+sudo tc qdisc del dev enp0s3 root
+sudo tc qdisc add dev enp0s3 handle ffff: ingress
+sudo tc filter add dev enp0s3 parent ffff: protocol ipv4 u32 match u32 0 0 action mirred egress redirect dev ifb0
+sudo tc qdisc add dev enp0s3 root tbf rate 20mbit burst 32kbit latency 40ms
+sudo tc qdisc add dev ifb0 root tbf rate 20mbit burst 32kbit latency 40ms
+```
+
+3. Execute the previous file to create the bandwidth limit.
+```bash
+sh tunnel.sh
+```
+
+4. Check with any network tool such as iperf if the network parameters have been modified.
+
 #### Probe deployment
+Deploy the probe inside the Traffic Manager (virtual machine or local host to manipulate the traffic)
 
 1. Pull images from Docker Hub and start two daemon with two probes
 ```bash
 sudo docker login
 sudo docker ps -a
-sudo docker pull kaiser1414/upm_tfm:1.1.3
+sudo docker pull {DOCKER REPOSITORY}
+<!-- sudo docker pull kaiser1414/upm_tfm:1.1.3 -->
 sudo docker run -d --name probe -p 3005:3005 kaiser1414/upm_tfm:1.1.3
 ```
 
@@ -327,6 +357,24 @@ nano /home/test.js
 
 * KAFKA_TOPIC = 'tfm.probe.out'
 * var producer = Kafka.start('localhost', '9092') (or IP address and port where the Kafka server is located)
+
+* var message_6 = {
+    "vdu": obj.Mac_addr.toString(),
+    "metric": "metrics",
+    "value": {
+        "resolution": obj.videoSettings.height.toString(),
+        "frame_rate": obj.videoSettings.frame_rate.toString(),
+        "bitrate": obj.videoSettings.bitrate.toString(),
+        "duration": obj.videoSettings.duration.toString(),
+        "mos": obj.Predictions.mos.toString()
+        },
+    "unit": "double",
+    "timestamp": dateUTC
+  };
+
+* Modify callback function, leaving uncommented only the process.exit(1) line.
+
+* Kafka.send(KAFKA_TOPIC, JSON.stringify(message_6), callback);
 
 2. Move to the working directory and install some components.
 ```bash
@@ -444,25 +492,29 @@ fastify.listen(API_PORT, '0.0.0.0', (err, address) => {
 
 1. Create new virtual environment
 ```bash
-which python3.6 -> e.g. /usr/bin/python3.6
-virtualenv --python=/usr/bin/python3.6 ~/virtualenv/py3.6 [Linux/Mac users only]
-conda create -n py3.6 python=3.6 anaconda [Windows users only]
+
+which python3 -> e.g. /usr/bin/python3
+virtualenv venv --python=/usr/bin/python3
+
 ```
 
 2. Activate the virtual environment
 ```bash
-source ~/virtualenv/py3.6 [Mac/Linux users only]
-conda activate py3.6 [Windows users only]
+source venv/bin/activate
 ```
 
-3. Install necessary packages
+3. Install necessary requirements
 ```bash
-pip3 install tflearn tensorflow matplotlib
+pip install -r requirements.txt
 ```
 
 4. Clone repository
 ```bash
-git clone https://github.com/Kaiser-14/QoE_RL_A3C.git
+git clone https://github.com/Kaiser-14/DRL_QoE_A2C.git
+```
+5. If you are done working with the virtual environment
+```bash
+deactivate
 ```
 
 ## Project running
