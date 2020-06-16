@@ -337,11 +337,11 @@ sh tunnel.sh
 Deploy the probe inside the Traffic Manager (virtual machine or local host to manipulate the traffic)
 
 1. Pull images from Docker Hub and start two daemon with two probes
+<!--- sudo docker pull kaiser1414/upm_tfm:1.1.3 --->
 ```bash
 sudo docker login
 sudo docker ps -a
 sudo docker pull {DOCKER REPOSITORY}
-<!--- sudo docker pull kaiser1414/upm_tfm:1.1.3 --->
 sudo docker run -d --name probe -p 3005:3005 kaiser1414/upm_tfm:1.1.3
 ```
 
