@@ -2,7 +2,7 @@ import environment
 import actor
 import critic
 
-from environment import consume_kafka, assign_profile
+from environment import consume_kafka
 
 import os
 import logging
@@ -216,9 +216,6 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
 
         while True:
 
-            # counter = 0
-            # while True:
-
             print('Consuming data from Kafka...')
             resolution, fps_out, bitrate_out, duration_out, mos_out, timestamp = consume_kafka(consumer)
             # print('Probe bitrate: {}'.format(bitrate_out))
@@ -244,20 +241,7 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             ram_in = resp_get_vce_br['stats']['pid_ram']['value']
             encoding_quality = resp_get_vce_br['stats']['enc_quality']['value']
 
-            # profile_in = assign_profile(resolution, bitrate_in)
-
-            # if profile_in == last_action and counter == 5:  # TODO: Check behaviour
-            #     break
-            # else:
-            #     counter += 1
-            #     print('Waiting new measurements...')
-            #     sleep(1)
-
-            # if counter == 5: break  # TODO: Check if it breaks the whole program
-
             # Main reward, based on MOS
-            # Range between 72.05 and 19.10.
-            # Possible values of mos x (exp(x)): 5 = 148; 4.3=73.69; 4=54.6; 4.2=66.6; 0.5=1.64
             # rew_mos = math.exp(4) - math.exp(5-float(mos_out))
             # rew_mos = math.exp(float(mos_out))
             if float(mos_out) > 2.5:
@@ -269,27 +253,18 @@ def agent(agent_id, net_params_queue, exp_queue, consumer):  # General agent
             rew_mos = aux * math.exp(1.5 * mos)
 
             # Penalization based on losses received by probe in terms of bitrate
-            # Range between -12 and -1.
-            # https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
             # rew_br = -math.exp(3*distance.canberra(bitrate_in/1000, bitrate_out/1000))
-            # New range between -44 and -12 (-1 if same bitrate).
             rew_br = -math.exp(2 * (1 + distance.canberra(float(bitrate_in) / 1000, float(bitrate_out) / 1000)))
 
             # Penalization when changing abruptly between profiles
-            # Range between -20.58 and 0.0. New range between -13.7 and 0.
             # rew_smooth = np.where(distance.canberra(action, last_action) != 0,
             #                       (12-1)*np.log(1-distance.canberra(action, last_action)), 0)
             rew_smooth = 12 * np.log(1 - distance.canberra(action + 1, last_action + 1))
 
             # Reward higher profiles
-            # Range between 22 and 11
             # rew_profile = 2*(12 - action)
             rew_profile = math.pow(2, (4-action))
 
-            # Reward accumulating good results
-            # rew_res =
-
-            # https://en.wikipedia.org/wiki/Test_functions_for_optimization
             reward = rew_mos + rew_br + rew_smooth + rew_profile
             print('Rew_MOS: {}'.format(rew_mos))
             print('Rew_BR: {}'.format(rew_br))

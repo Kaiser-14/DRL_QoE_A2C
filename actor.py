@@ -45,7 +45,6 @@ class Actor(object):
 
         self.actor_grads = tf.gradients(self.objective, self.actor_params)
 
-        # FIXME: Test other optimizer
         self.optimize = tf.train.RMSPropOptimizer(self.learning_rate).apply_gradients(zip(self.actor_grads,
                                                                                           self.actor_params))
 

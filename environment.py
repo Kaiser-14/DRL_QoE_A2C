@@ -65,7 +65,6 @@ def compute_entropy(info):
     return entropy
 
 
-# TODO: Check good behaviour, based on result
 def consume_kafka(consumer):
 
     for message in consumer:
@@ -80,20 +79,3 @@ def consume_kafka(consumer):
         break
 
     return resolution, frame_rate, bitrate, duration, mos, timestamp
-
-
-def assign_profile(resolution, bitrate):
-    bitrate_list = np.reshape([list(item.values())[0] for item in list(PROFILES.values())], (2, 6))
-
-    if resolution == '1080':
-        comparison_list = abs(bitrate_list[0] - bitrate)
-        profile = np.argmin(comparison_list) + 1
-
-    elif resolution == '720':
-        comparison_list = abs(bitrate_list[1] - bitrate)
-        profile = np.argmin(comparison_list) + 7
-
-    else:  # TODO: Control resolutions
-        print('Wrong resolution')
-
-    return profile
