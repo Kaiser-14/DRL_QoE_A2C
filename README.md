@@ -46,12 +46,13 @@ sudo apt install default-jdk
 
 3. Install Docker
 ```bash
-sudo apt install default-jdk
+sudo apt install docker.io
 ```
 
 4. Install VirtualBox
 ```bash
-sudo apt install default-jdk
+sudo apt-get install virtualbox
+sudo apt-get install virtualbox—ext–pack
 ```
 
 5. Install FFmpeg
