@@ -5,5 +5,5 @@ numpy == 1.18.4
 pandas == 1.0.4
 requests == 2.20.0
 scipy == 1.4.1
-tensorflow == 1.15.5
+tensorflow == 2.5.1
 tflearn == 0.3.2
